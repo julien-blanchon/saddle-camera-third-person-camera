@@ -1,0 +1,19 @@
+[package]
+name = "saddle-camera-third-person-camera"
+version = "0.1.0"
+edition = "2024"
+publish = false
+repository = "https://github.com/julien-blanchon/saddle-camera-third-person-camera"
+license = "MIT-0"
+description = "Reusable third-person camera rig with orbit, shoulder, aim, and obstacle avoidance"
+
+[dependencies]
+bevy = "0.18"
+bevy_enhanced_input = "0.24"
+
+[workspace]
+
+[lints.clippy]
+too_many_arguments = "allow"
+type_complexity = "allow"
+nonstandard_macro_braces = "warn"
