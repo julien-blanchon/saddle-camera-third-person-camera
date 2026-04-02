@@ -1,7 +1,9 @@
 use saddle_camera_third_person_camera_example_common as common;
 
 use bevy::prelude::*;
-use saddle_camera_third_person_camera::{ThirdPersonCamera, ThirdPersonCameraPlugin, ThirdPersonCameraSystems};
+use saddle_camera_third_person_camera::{
+    ThirdPersonCamera, ThirdPersonCameraPlugin, ThirdPersonCameraSystems,
+};
 
 #[derive(Component)]
 struct AuthoritativeMotion {
@@ -72,7 +74,11 @@ fn move_authoritative_target(
         let angle = time.elapsed_secs() * motion.speed;
         let previous = transform.translation;
         transform.translation = motion.center
-            + Vec3::new(angle.cos() * motion.radius, 0.0, angle.sin() * motion.radius);
+            + Vec3::new(
+                angle.cos() * motion.radius,
+                0.0,
+                angle.sin() * motion.radius,
+            );
         let velocity = transform.translation - previous;
         if velocity.length_squared() > 0.0001 {
             transform.look_to(velocity.normalize_or_zero(), Vec3::Y);

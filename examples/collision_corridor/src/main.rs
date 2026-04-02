@@ -12,7 +12,8 @@ fn main() {
         .add_systems(Startup, setup)
         .add_systems(
             PostUpdate,
-            common::animate_targets.before(saddle_camera_third_person_camera::ThirdPersonCameraSystems::UpdateIntent),
+            common::animate_targets
+                .before(saddle_camera_third_person_camera::ThirdPersonCameraSystems::UpdateIntent),
         )
         .run();
 }

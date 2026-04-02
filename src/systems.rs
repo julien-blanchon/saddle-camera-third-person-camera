@@ -8,14 +8,14 @@ use bevy::{
 };
 
 use crate::{
-    math::{
-        camera_pose_from_look_target, forward_from_angles, segment_aabb_hit, smooth_angle,
-        smooth_scalar, smooth_vec3, wrap_angle, yaw_from_direction, CameraPose,
-    },
     CollisionStrategy, ShoulderSide, ThirdPersonCamera, ThirdPersonCameraIgnore,
     ThirdPersonCameraIgnoreTarget, ThirdPersonCameraInput, ThirdPersonCameraInputTarget,
     ThirdPersonCameraMode, ThirdPersonCameraObstacle, ThirdPersonCameraRuntime,
     ThirdPersonCameraSettings, ThirdPersonCameraTarget,
+    math::{
+        CameraPose, camera_pose_from_look_target, forward_from_angles, segment_aabb_hit,
+        smooth_angle, smooth_scalar, smooth_vec3, wrap_angle, yaw_from_direction,
+    },
 };
 
 #[derive(Resource, Default, Clone, Copy)]

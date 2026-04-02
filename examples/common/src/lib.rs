@@ -1,8 +1,8 @@
 use bevy::prelude::*;
 use saddle_camera_third_person_camera::{
-    default_input_bindings, ThirdPersonCamera, ThirdPersonCameraDebug,
-    ThirdPersonCameraInputTarget, ThirdPersonCameraObstacle, ThirdPersonCameraSettings,
-    ThirdPersonCameraTarget,
+    ThirdPersonCamera, ThirdPersonCameraDebug, ThirdPersonCameraInputTarget,
+    ThirdPersonCameraObstacle, ThirdPersonCameraSettings, ThirdPersonCameraTarget,
+    default_input_bindings,
 };
 
 #[derive(Component)]

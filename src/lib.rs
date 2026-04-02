@@ -26,6 +26,7 @@ pub use math::{
     yaw_from_direction, yaw_pitch_rotation,
 };
 
+use crate::systems::ActiveInputCamera;
 use bevy::{
     app::PostStartup,
     ecs::{intern::Interned, schedule::ScheduleLabel},
@@ -33,11 +34,7 @@ use bevy::{
     prelude::*,
     transform::TransformSystems,
 };
-use bevy_enhanced_input::{
-    context::InputContextAppExt,
-    EnhancedInputPlugin, EnhancedInputSystems,
-};
-use crate::systems::ActiveInputCamera;
+use bevy_enhanced_input::{EnhancedInputPlugin, EnhancedInputSystems, context::InputContextAppExt};
 
 #[derive(SystemSet, Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub enum ThirdPersonCameraSystems {
@@ -172,7 +169,10 @@ impl Plugin for ThirdPersonCameraPlugin {
             )
             .add_systems(
                 PostUpdate,
-                (systems::apply_camera_transform, systems::clear_consumed_input)
+                (
+                    systems::apply_camera_transform,
+                    systems::clear_consumed_input,
+                )
                     .chain()
                     .in_set(ThirdPersonCameraSystems::ApplyTransform)
                     .before(TransformSystems::Propagate)

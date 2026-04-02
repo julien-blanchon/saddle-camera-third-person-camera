@@ -1,13 +1,15 @@
 use bevy::prelude::*;
 use bevy_e2e::{
+    E2EPlugin, E2ESet,
     action::Action,
     actions::{assertions, inspect},
     init_scenario,
     scenario::Scenario,
-    E2EPlugin, E2ESet,
 };
 use bevy_enhanced_input::prelude::EnhancedInputSystems;
-use saddle_camera_third_person_camera::{ThirdPersonCamera, ThirdPersonCameraRuntime, ThirdPersonCameraTarget};
+use saddle_camera_third_person_camera::{
+    ThirdPersonCamera, ThirdPersonCameraRuntime, ThirdPersonCameraTarget,
+};
 
 use crate::{LabAlternateTarget, LabCameraEntity};
 
@@ -20,7 +22,8 @@ impl Plugin for ThirdPersonCameraLabE2EPlugin {
             Update,
             (
                 E2ESet.before(EnhancedInputSystems::Update),
-                E2ESet.before(saddle_camera_third_person_camera::ThirdPersonCameraSystems::ReadInput),
+                E2ESet
+                    .before(saddle_camera_third_person_camera::ThirdPersonCameraSystems::ReadInput),
             ),
         );
 

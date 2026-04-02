@@ -2,11 +2,11 @@ use bevy::prelude::*;
 use bevy::state::app::StatesPlugin;
 
 use crate::{
-    shortest_angle_delta, AutoRecenterSettings, CollisionStrategy, FollowAlignment, ShoulderSide,
-    ThirdPersonCamera, ThirdPersonCameraIgnore, ThirdPersonCameraInput,
-    ThirdPersonCameraInputTarget, ThirdPersonCameraObstacle, ThirdPersonCameraPlugin,
-    ThirdPersonCameraRuntime, ThirdPersonCameraSettings, ThirdPersonCameraSystems,
-    ThirdPersonCameraTarget,
+    AutoRecenterSettings, CollisionStrategy, FollowAlignment, ShoulderSide, ThirdPersonCamera,
+    ThirdPersonCameraIgnore, ThirdPersonCameraInput, ThirdPersonCameraInputTarget,
+    ThirdPersonCameraObstacle, ThirdPersonCameraPlugin, ThirdPersonCameraRuntime,
+    ThirdPersonCameraSettings, ThirdPersonCameraSystems, ThirdPersonCameraTarget,
+    shortest_angle_delta,
 };
 
 #[derive(States, Debug, Default, Clone, Copy, Eq, PartialEq, Hash)]

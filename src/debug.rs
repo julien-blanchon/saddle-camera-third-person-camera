@@ -1,8 +1,4 @@
-use bevy::{
-    color::palettes::css,
-    gizmos::prelude::*,
-    prelude::*,
-};
+use bevy::{color::palettes::css, gizmos::prelude::*, prelude::*};
 
 use crate::{ThirdPersonCamera, ThirdPersonCameraDebug, ThirdPersonCameraRuntime};
 
@@ -20,7 +16,11 @@ pub(crate) fn draw_debug_gizmos(
             gizmos.sphere(runtime.look_target, 0.06, css::YELLOW);
         }
         if debug.draw_desired {
-            gizmos.line(runtime.look_target, runtime.desired_camera_position, css::ORANGE_RED);
+            gizmos.line(
+                runtime.look_target,
+                runtime.desired_camera_position,
+                css::ORANGE_RED,
+            );
             gizmos.sphere(runtime.desired_camera_position, 0.06, css::ORANGE);
         }
         if debug.draw_corrected {

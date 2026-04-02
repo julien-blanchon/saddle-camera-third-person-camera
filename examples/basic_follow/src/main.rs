@@ -1,7 +1,9 @@
 use saddle_camera_third_person_camera_example_common as common;
 
 use bevy::prelude::*;
-use saddle_camera_third_person_camera::{ThirdPersonCamera, ThirdPersonCameraPlugin, ThirdPersonCameraSettings};
+use saddle_camera_third_person_camera::{
+    ThirdPersonCamera, ThirdPersonCameraPlugin, ThirdPersonCameraSettings,
+};
 
 fn main() {
     App::new()

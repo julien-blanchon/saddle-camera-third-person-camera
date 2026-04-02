@@ -20,17 +20,17 @@ fn plugin_registers_input_context_and_runtime_defaults() {
         Update,
     ));
 
-    app.world_mut()
-        .spawn((ThirdPersonCamera::default(), Name::new("Plugin Test Camera")));
+    app.world_mut().spawn((
+        ThirdPersonCamera::default(),
+        Name::new("Plugin Test Camera"),
+    ));
     app.update();
 
-    let mut query = app
-        .world_mut()
-        .query::<(
-            &crate::ThirdPersonCameraRuntime,
-            &crate::ThirdPersonCameraInput,
-            &crate::ThirdPersonCameraSettings,
-            &Name,
-        )>();
+    let mut query = app.world_mut().query::<(
+        &crate::ThirdPersonCameraRuntime,
+        &crate::ThirdPersonCameraInput,
+        &crate::ThirdPersonCameraSettings,
+        &Name,
+    )>();
     assert_eq!(query.iter(app.world()).count(), 1);
 }
