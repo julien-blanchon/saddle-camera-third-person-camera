@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use bevy_enhanced_input::prelude::{
-    Action, Axial, Bidirectional, Binding, Bindings, Cancel as InputCancel, Complete, DeadZone,
-    Fire, InputAction, Press, Scale, Start, actions, bindings,
+    actions, bindings, Action, Axial, Bidirectional, Binding, Bindings, Cancel as InputCancel,
+    Complete, DeadZone, Fire, InputAction, Press, Scale, Start,
 };
 use bevy_enhanced_input::preset::WithBundle;
 
@@ -22,6 +22,18 @@ pub struct ZoomAction;
 #[derive(Debug, InputAction)]
 #[action_output(bool)]
 pub struct AimAction;
+
+#[derive(Debug, InputAction)]
+#[action_output(bool)]
+pub struct ToggleLockOnAction;
+
+#[derive(Debug, InputAction)]
+#[action_output(bool)]
+pub struct NextLockOnTargetAction;
+
+#[derive(Debug, InputAction)]
+#[action_output(bool)]
+pub struct PreviousLockOnTargetAction;
 
 #[derive(Debug, InputAction)]
 #[action_output(bool)]
@@ -69,6 +81,21 @@ pub fn default_input_bindings() -> impl Bundle {
             (
                 Action::<AimAction>::new(),
                 bindings![MouseButton::Right, GamepadButton::LeftTrigger2],
+            ),
+            (
+                Action::<ToggleLockOnAction>::new(),
+                Press::default(),
+                bindings![KeyCode::KeyF, GamepadButton::RightThumb],
+            ),
+            (
+                Action::<NextLockOnTargetAction>::new(),
+                Press::default(),
+                bindings![KeyCode::KeyE, GamepadButton::DPadUp],
+            ),
+            (
+                Action::<PreviousLockOnTargetAction>::new(),
+                Press::default(),
+                bindings![KeyCode::KeyZ, GamepadButton::DPadLeft],
             ),
             (
                 Action::<ToggleShoulderAction>::new(),
@@ -127,6 +154,33 @@ pub(crate) fn cache_aim_active(
 ) {
     if let Ok(mut input) = cameras.get_mut(trigger.context) {
         input.aim = input.aim || trigger.value;
+    }
+}
+
+pub(crate) fn cache_lock_on_toggle(
+    trigger: On<Start<ToggleLockOnAction>>,
+    mut cameras: Query<&mut ThirdPersonCameraInput, With<ThirdPersonCamera>>,
+) {
+    if let Ok(mut input) = cameras.get_mut(trigger.context) {
+        input.lock_on_toggle = true;
+    }
+}
+
+pub(crate) fn cache_lock_on_next(
+    trigger: On<Start<NextLockOnTargetAction>>,
+    mut cameras: Query<&mut ThirdPersonCameraInput, With<ThirdPersonCamera>>,
+) {
+    if let Ok(mut input) = cameras.get_mut(trigger.context) {
+        input.lock_on_next = true;
+    }
+}
+
+pub(crate) fn cache_lock_on_previous(
+    trigger: On<Start<PreviousLockOnTargetAction>>,
+    mut cameras: Query<&mut ThirdPersonCameraInput, With<ThirdPersonCamera>>,
+) {
+    if let Ok(mut input) = cameras.get_mut(trigger.context) {
+        input.lock_on_previous = true;
     }
 }
 

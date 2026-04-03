@@ -8,22 +8,25 @@ mod systems;
 pub use components::{
     ThirdPersonCamera, ThirdPersonCameraDebug, ThirdPersonCameraIgnore,
     ThirdPersonCameraIgnoreTarget, ThirdPersonCameraInput, ThirdPersonCameraInputTarget,
-    ThirdPersonCameraObstacle, ThirdPersonCameraRuntime, ThirdPersonCameraTarget,
+    ThirdPersonCameraLockOn, ThirdPersonCameraLockOnTarget, ThirdPersonCameraObstacle,
+    ThirdPersonCameraRuntime, ThirdPersonCameraTarget,
 };
 pub use config::{
     AutoRecenterSettings, CollisionSettings, CollisionStrategy, CursorPolicy, FollowAlignment,
-    FramingSettings, ObstacleType, OrbitSettings, ShoulderSide, SmoothingSettings,
-    ThirdPersonCameraMode, ThirdPersonCameraSettings, ZoomSettings,
+    FramingSettings, LockOnSettings, ObstacleType, OrbitSettings, ScreenSpaceFramingSettings,
+    ShoulderSide, SmoothingSettings, ThirdPersonCameraMode, ThirdPersonCameraSettings,
+    ZoomSettings,
 };
 pub use input::{
-    AimAction, CursorLockAction, ForceCenterModeAction, ForceShoulderModeAction, OrbitAction,
-    RecenterAction, ShoulderHoldAction, ThirdPersonCameraInputContext, ToggleShoulderAction,
-    ZoomAction, default_input_bindings,
+    default_input_bindings, AimAction, CursorLockAction, ForceCenterModeAction,
+    ForceShoulderModeAction, NextLockOnTargetAction, OrbitAction, PreviousLockOnTargetAction,
+    RecenterAction, ShoulderHoldAction, ThirdPersonCameraInputContext, ToggleLockOnAction,
+    ToggleShoulderAction, ZoomAction,
 };
 pub use math::{
-    CameraPose, SegmentHit, camera_pose_from_look_target, forward_from_angles, segment_aabb_hit,
-    shortest_angle_delta, smooth_angle, smooth_factor, smooth_scalar, smooth_vec3, wrap_angle,
-    yaw_from_direction, yaw_pitch_rotation,
+    camera_pose_from_look_target, forward_from_angles, segment_aabb_hit, shortest_angle_delta,
+    smooth_angle, smooth_factor, smooth_scalar, smooth_vec3, wrap_angle, yaw_from_direction,
+    yaw_pitch_rotation, CameraPose, SegmentHit,
 };
 
 use crate::systems::ActiveInputCamera;
@@ -34,7 +37,7 @@ use bevy::{
     prelude::*,
     transform::TransformSystems,
 };
-use bevy_enhanced_input::{EnhancedInputPlugin, EnhancedInputSystems, context::InputContextAppExt};
+use bevy_enhanced_input::{context::InputContextAppExt, EnhancedInputPlugin, EnhancedInputSystems};
 
 #[derive(SystemSet, Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub enum ThirdPersonCameraSystems {
@@ -100,8 +103,10 @@ impl Plugin for ThirdPersonCameraPlugin {
             .register_type::<CursorPolicy>()
             .register_type::<FollowAlignment>()
             .register_type::<FramingSettings>()
+            .register_type::<LockOnSettings>()
             .register_type::<ObstacleType>()
             .register_type::<OrbitSettings>()
+            .register_type::<ScreenSpaceFramingSettings>()
             .register_type::<ShoulderSide>()
             .register_type::<SmoothingSettings>()
             .register_type::<ThirdPersonCamera>()
@@ -111,6 +116,8 @@ impl Plugin for ThirdPersonCameraPlugin {
             .register_type::<ThirdPersonCameraInput>()
             .register_type::<ThirdPersonCameraInputContext>()
             .register_type::<ThirdPersonCameraInputTarget>()
+            .register_type::<ThirdPersonCameraLockOn>()
+            .register_type::<ThirdPersonCameraLockOnTarget>()
             .register_type::<ThirdPersonCameraMode>()
             .register_type::<ThirdPersonCameraObstacle>()
             .register_type::<ThirdPersonCameraRuntime>()
@@ -120,6 +127,9 @@ impl Plugin for ThirdPersonCameraPlugin {
             .add_observer(input::cache_orbit_delta)
             .add_observer(input::cache_zoom_delta)
             .add_observer(input::cache_aim_active)
+            .add_observer(input::cache_lock_on_toggle)
+            .add_observer(input::cache_lock_on_next)
+            .add_observer(input::cache_lock_on_previous)
             .add_observer(input::cache_shoulder_hold)
             .add_observer(input::cache_shoulder_toggle)
             .add_observer(input::cache_recenter)
@@ -155,6 +165,7 @@ impl Plugin for ThirdPersonCameraPlugin {
                 PostUpdate,
                 (
                     systems::initialize_added_cameras,
+                    systems::update_lock_on_selection,
                     systems::update_camera_runtime,
                 )
                     .chain()

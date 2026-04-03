@@ -9,7 +9,8 @@ use crate::config::{ObstacleType, ShoulderSide, ThirdPersonCameraMode, ThirdPers
     Transform,
     ThirdPersonCameraSettings,
     ThirdPersonCameraRuntime,
-    ThirdPersonCameraInput
+    ThirdPersonCameraInput,
+    ThirdPersonCameraLockOn
 )]
 pub struct ThirdPersonCamera {
     pub yaw: f32,
@@ -121,11 +122,15 @@ pub struct ThirdPersonCameraRuntime {
     pub target_shoulder_blend: f32,
     pub aim_blend: f32,
     pub target_aim_blend: f32,
+    pub lock_on_focus: Vec3,
+    pub lock_on_blend: f32,
+    pub target_lock_on_blend: f32,
     pub desired_camera_position: Vec3,
     pub corrected_camera_position: Vec3,
     pub last_hit_point: Option<Vec3>,
     pub last_hit_normal: Vec3,
     pub last_collision_target: Option<Entity>,
+    pub active_lock_on_target: Option<Entity>,
     pub idle_seconds: f32,
     pub manual_input_this_frame: bool,
     pub last_target_position: Vec3,
@@ -147,11 +152,15 @@ impl Default for ThirdPersonCameraRuntime {
             target_shoulder_blend: 0.0,
             aim_blend: 0.0,
             target_aim_blend: 0.0,
+            lock_on_focus: Vec3::ZERO,
+            lock_on_blend: 0.0,
+            target_lock_on_blend: 0.0,
             desired_camera_position: Vec3::ZERO,
             corrected_camera_position: Vec3::ZERO,
             last_hit_point: None,
             last_hit_normal: Vec3::ZERO,
             last_collision_target: None,
+            active_lock_on_target: None,
             idle_seconds: 0.0,
             manual_input_this_frame: false,
             last_target_position: Vec3::ZERO,
@@ -194,6 +203,9 @@ pub struct ThirdPersonCameraInput {
     pub shoulder_toggle: bool,
     pub shoulder_hold: bool,
     pub aim: bool,
+    pub lock_on_toggle: bool,
+    pub lock_on_next: bool,
+    pub lock_on_previous: bool,
     pub recenter: bool,
     pub cursor_lock_toggle: bool,
     pub raw_mode_center: bool,
@@ -211,10 +223,35 @@ impl ThirdPersonCameraInput {
             || self.shoulder_toggle
             || self.shoulder_hold
             || self.aim
+            || self.lock_on_toggle
+            || self.lock_on_next
+            || self.lock_on_previous
             || self.recenter
             || self.cursor_lock_toggle
             || self.raw_mode_center
             || self.raw_mode_shoulder
+    }
+}
+
+#[derive(Component, Clone, Copy, Debug, Default, Reflect)]
+#[reflect(Component)]
+pub struct ThirdPersonCameraLockOn {
+    pub active_target: Option<Entity>,
+}
+
+#[derive(Component, Clone, Copy, Debug, Reflect)]
+#[reflect(Component)]
+pub struct ThirdPersonCameraLockOnTarget {
+    pub offset: Vec3,
+    pub priority: f32,
+}
+
+impl Default for ThirdPersonCameraLockOnTarget {
+    fn default() -> Self {
+        Self {
+            offset: Vec3::ZERO,
+            priority: 0.0,
+        }
     }
 }
 

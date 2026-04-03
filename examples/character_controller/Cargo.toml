@@ -1,0 +1,17 @@
+[package]
+name = "saddle-camera-third-person-camera-example-character-controller"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+avian3d = { workspace = true }
+bevy = { workspace = true }
+bevy_enhanced_input = { workspace = true }
+saddle-camera-third-person-camera = { workspace = true }
+saddle-camera-third-person-camera-example-common = { path = "../common" }
+saddle-character-controller = { workspace = true }
+saddle-pane = { workspace = true }
+
+[lints]
+workspace = true

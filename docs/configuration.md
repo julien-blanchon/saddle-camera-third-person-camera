@@ -13,6 +13,8 @@ This crate keeps camera tuning in explicit configuration structs rather than hid
 | `smoothing` | `SmoothingSettings` | `SmoothingSettings::default()` | See below | Follow, aim, shoulder, zoom, and obstruction smoothing |
 | `zoom` | `ZoomSettings` | `ZoomSettings::default()` | See below | Designer zoom range and zoom step |
 | `framing` | `FramingSettings` | `FramingSettings::default()` | See below | Shoulder framing, aim framing, and target clearance |
+| `screen_framing` | `ScreenSpaceFramingSettings` | `ScreenSpaceFramingSettings::default()` | See below | Screen-space dead-zone and soft-zone follow behavior |
+| `lock_on` | `LockOnSettings` | `LockOnSettings::default()` | See below | Action-game lock-on targeting behavior |
 | `collision` | `CollisionSettings` | `CollisionSettings::default()` | See below | Obstruction strategy and minimum camera distance |
 | `auto_recenter` | `AutoRecenterSettings` | `AutoRecenterSettings::default()` | See below | Idle recentering policy |
 | `cursor` | `CursorPolicy` | `CursorPolicy::default()` | See below | Cursor lock defaults and toggle permission |
@@ -93,6 +95,32 @@ All smoothing values are exponential response rates. Higher numbers settle faste
 | `aim_pitch_offset` | `f32` | `0.10` | Any finite value | Additional pitch applied in aim mode |
 | `target_radius_clearance` | `f32` | `0.55` | `>= 0.0` | Extra look-anchor lift that helps large targets avoid near-clip face shots |
 
+## Screen Framing
+
+### `ScreenSpaceFramingSettings`
+
+| Field | Type | Default | Valid Range | Behavior |
+| --- | --- | --- | --- | --- |
+| `enabled` | `bool` | `false` | `true` or `false` | Enables screen-space framing rather than pure world-space follow |
+| `dead_zone` | `Vec2` | `(0.12, 0.10)` | `0.0..1.0` per axis | Region where the target can move without camera response |
+| `soft_zone` | `Vec2` | `(0.55, 0.48)` | Larger than `dead_zone`, typically `< 1.0` | Region where the camera eases back toward the target before hard follow |
+| `screen_offset` | `Vec2` | `(0.0, 0.0)` | roughly `-0.5..0.5` | Biases the target anchor away from exact screen center |
+
+Dead zone and soft zone are normalized viewport fractions. A larger soft zone slows visible recentering, while a smaller dead zone makes the camera feel tighter and more responsive.
+
+## Lock On
+
+### `LockOnSettings`
+
+| Field | Type | Default | Valid Range | Behavior |
+| --- | --- | --- | --- | --- |
+| `enabled` | `bool` | `false` | `true` or `false` | Enables lock-on selection and runtime facing behavior |
+| `max_distance` | `f32` | `24.0` | `> 0.0` | Maximum distance from the camera pivot to candidate targets |
+| `focus_bias` | `f32` | `0.72` | `0.0..1.0` | Biases candidate selection toward targets already near the view center |
+| `pitch_offset` | `f32` | `0.08` | Any finite value | Offsets pitch while lock-on is active to keep both combatants framed |
+
+Candidate targets must carry `ThirdPersonCameraLockOnTarget`.
+
 ## Collision
 
 ### `CollisionSettings`
@@ -148,6 +176,21 @@ All smoothing values are exponential response rates. Higher numbers settle faste
 | --- | --- | --- | --- | --- |
 | `lock_by_default` | `bool` | `true` | `true` or `false` | Initial cursor-lock state for active input cameras |
 | `allow_toggle` | `bool` | `true` | `true` or `false` | Allows `CursorLockAction` to flip the lock state |
+
+## Lock-On Components
+
+### `ThirdPersonCameraLockOn`
+
+| Field | Type | Default | Valid Range | Behavior |
+| --- | --- | --- | --- | --- |
+| `active_target` | `Option<Entity>` | `None` | Live entity or `None` | Currently selected lock-on target |
+
+### `ThirdPersonCameraLockOnTarget`
+
+| Field | Type | Default | Valid Range | Behavior |
+| --- | --- | --- | --- | --- |
+| `offset` | `Vec3` | `Vec3::ZERO` | Any finite vector | Additional target-local offset used for the lock-on anchor |
+| `priority` | `f32` | `1.0` | `>= 0.0` | Weight applied during candidate ranking and cycling |
 
 ## Target Descriptor
 

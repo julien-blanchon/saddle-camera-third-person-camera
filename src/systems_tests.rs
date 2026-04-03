@@ -2,11 +2,12 @@ use bevy::prelude::*;
 use bevy::state::app::StatesPlugin;
 
 use crate::{
-    AutoRecenterSettings, CollisionStrategy, FollowAlignment, ShoulderSide, ThirdPersonCamera,
+    shortest_angle_delta, AutoRecenterSettings, CollisionStrategy, FollowAlignment, LockOnSettings,
+    ScreenSpaceFramingSettings, ShoulderSide, SmoothingSettings, ThirdPersonCamera,
     ThirdPersonCameraIgnore, ThirdPersonCameraInput, ThirdPersonCameraInputTarget,
-    ThirdPersonCameraObstacle, ThirdPersonCameraPlugin, ThirdPersonCameraRuntime,
-    ThirdPersonCameraSettings, ThirdPersonCameraSystems, ThirdPersonCameraTarget,
-    shortest_angle_delta,
+    ThirdPersonCameraLockOn, ThirdPersonCameraLockOnTarget, ThirdPersonCameraObstacle,
+    ThirdPersonCameraPlugin, ThirdPersonCameraRuntime, ThirdPersonCameraSettings,
+    ThirdPersonCameraSystems, ThirdPersonCameraTarget,
 };
 
 #[derive(States, Debug, Default, Clone, Copy, Eq, PartialEq, Hash)]
@@ -336,4 +337,181 @@ fn large_target_radius_raises_minimum_distance() {
 
     let runtime = app.world().get::<ThirdPersonCameraRuntime>(camera).unwrap();
     assert!(runtime.desired_distance >= 1.79);
+}
+
+#[test]
+fn lock_on_toggle_selects_forward_candidate() {
+    let mut app = test_app();
+    let target = spawn_target(&mut app, "Player", Transform::default());
+    let front_target = app
+        .world_mut()
+        .spawn((
+            Name::new("Front Target"),
+            ThirdPersonCameraLockOnTarget::default(),
+            Transform::from_xyz(0.0, 0.0, 8.0),
+            GlobalTransform::from(Transform::from_xyz(0.0, 0.0, 8.0)),
+        ))
+        .id();
+    app.world_mut().spawn((
+        Name::new("Rear Target"),
+        ThirdPersonCameraLockOnTarget::default(),
+        Transform::from_xyz(0.0, 0.0, -8.0),
+        GlobalTransform::from(Transform::from_xyz(0.0, 0.0, -8.0)),
+    ));
+    let camera = app
+        .world_mut()
+        .spawn((
+            ThirdPersonCamera::default(),
+            ThirdPersonCameraTarget::new(target),
+            ThirdPersonCameraInput {
+                lock_on_toggle: true,
+                ..default()
+            },
+            ThirdPersonCameraSettings {
+                lock_on: LockOnSettings {
+                    enabled: true,
+                    max_distance: 20.0,
+                    ..default()
+                },
+                smoothing: SmoothingSettings {
+                    orientation_smoothing: 0.0,
+                    target_follow_smoothing: 0.0,
+                    aim_blend: 0.0,
+                    ..default()
+                },
+                ..default()
+            },
+        ))
+        .id();
+
+    app.update();
+
+    let lock_on = app.world().get::<ThirdPersonCameraLockOn>(camera).unwrap();
+    let runtime = app.world().get::<ThirdPersonCameraRuntime>(camera).unwrap();
+    assert_eq!(lock_on.active_target, Some(front_target));
+    assert_eq!(runtime.active_lock_on_target, Some(front_target));
+    assert!(runtime.lock_on_blend > 0.9);
+}
+
+#[test]
+fn lock_on_cycle_moves_to_the_next_target() {
+    let mut app = test_app();
+    let target = spawn_target(&mut app, "Player", Transform::default());
+    let front_target = app
+        .world_mut()
+        .spawn((
+            Name::new("Front Target"),
+            ThirdPersonCameraLockOnTarget::default(),
+            Transform::from_xyz(0.0, 0.0, 8.0),
+            GlobalTransform::from(Transform::from_xyz(0.0, 0.0, 8.0)),
+        ))
+        .id();
+    let right_target = app
+        .world_mut()
+        .spawn((
+            Name::new("Right Target"),
+            ThirdPersonCameraLockOnTarget::default(),
+            Transform::from_xyz(6.0, 0.0, 6.0),
+            GlobalTransform::from(Transform::from_xyz(6.0, 0.0, 6.0)),
+        ))
+        .id();
+    let camera = app
+        .world_mut()
+        .spawn((
+            ThirdPersonCamera::default(),
+            ThirdPersonCameraTarget::new(target),
+            ThirdPersonCameraSettings {
+                lock_on: LockOnSettings {
+                    enabled: true,
+                    max_distance: 20.0,
+                    ..default()
+                },
+                smoothing: SmoothingSettings {
+                    orientation_smoothing: 0.0,
+                    target_follow_smoothing: 0.0,
+                    aim_blend: 0.0,
+                    ..default()
+                },
+                ..default()
+            },
+        ))
+        .id();
+
+    app.world_mut()
+        .get_mut::<ThirdPersonCameraInput>(camera)
+        .unwrap()
+        .lock_on_toggle = true;
+    app.update();
+    assert_eq!(
+        app.world()
+            .get::<ThirdPersonCameraLockOn>(camera)
+            .unwrap()
+            .active_target,
+        Some(front_target)
+    );
+
+    app.world_mut()
+        .get_mut::<ThirdPersonCameraInput>(camera)
+        .unwrap()
+        .lock_on_next = true;
+    app.update();
+
+    assert_eq!(
+        app.world()
+            .get::<ThirdPersonCameraLockOn>(camera)
+            .unwrap()
+            .active_target,
+        Some(right_target)
+    );
+}
+
+#[test]
+fn screen_framing_dead_zone_absorbs_small_motion() {
+    let mut app = test_app();
+    let target = spawn_target(&mut app, "Player", Transform::default());
+    let camera = app
+        .world_mut()
+        .spawn((
+            ThirdPersonCamera::default(),
+            ThirdPersonCameraTarget::new(target),
+            ThirdPersonCameraSettings {
+                smoothing: SmoothingSettings {
+                    target_follow_smoothing: 0.0,
+                    ..default()
+                },
+                screen_framing: ScreenSpaceFramingSettings {
+                    enabled: true,
+                    dead_zone: Vec2::new(0.35, 0.25),
+                    soft_zone: Vec2::new(0.55, 0.4),
+                    screen_offset: Vec2::ZERO,
+                },
+                ..default()
+            },
+        ))
+        .id();
+
+    app.update();
+    let initial_pivot = app
+        .world()
+        .get::<ThirdPersonCameraRuntime>(camera)
+        .unwrap()
+        .pivot;
+
+    set_target_transform(&mut app, target, Transform::from_xyz(0.2, 0.0, 0.0));
+    app.update();
+    let small_motion_pivot = app
+        .world()
+        .get::<ThirdPersonCameraRuntime>(camera)
+        .unwrap()
+        .pivot;
+    assert!((small_motion_pivot.x - initial_pivot.x).abs() < 0.05);
+
+    set_target_transform(&mut app, target, Transform::from_xyz(2.6, 0.0, 0.0));
+    app.update();
+    let large_motion_pivot = app
+        .world()
+        .get::<ThirdPersonCameraRuntime>(camera)
+        .unwrap()
+        .pivot;
+    assert!(large_motion_pivot.x > small_motion_pivot.x + 0.3);
 }

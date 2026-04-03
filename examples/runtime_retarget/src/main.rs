@@ -14,12 +14,13 @@ struct RetargetState {
 }
 
 fn main() {
-    App::new()
-        .add_plugins((DefaultPlugins, ThirdPersonCameraPlugin::default()))
-        .add_systems(Startup, setup)
-        .add_systems(Update, advance_retarget)
-        .add_systems(PostUpdate, common::animate_targets)
-        .run();
+    let mut app = App::new();
+    app.add_plugins((DefaultPlugins, ThirdPersonCameraPlugin::default()));
+    common::add_debug_pane(&mut app);
+    app.add_systems(Startup, setup);
+    app.add_systems(Update, advance_retarget);
+    app.add_systems(PostUpdate, common::animate_targets);
+    app.run();
 }
 
 fn setup(

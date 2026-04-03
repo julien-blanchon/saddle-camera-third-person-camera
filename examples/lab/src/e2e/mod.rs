@@ -1,17 +1,17 @@
 use bevy::prelude::*;
+use bevy_enhanced_input::prelude::EnhancedInputSystems;
 use saddle_bevy_e2e::{
-    E2EPlugin, E2ESet,
     action::Action,
     actions::{assertions, inspect},
     init_scenario,
     scenario::Scenario,
+    E2EPlugin, E2ESet,
 };
-use bevy_enhanced_input::prelude::EnhancedInputSystems;
 use saddle_camera_third_person_camera::{
-    ThirdPersonCamera, ThirdPersonCameraRuntime, ThirdPersonCameraTarget,
+    ThirdPersonCamera, ThirdPersonCameraLockOn, ThirdPersonCameraRuntime, ThirdPersonCameraTarget,
 };
 
-use crate::{LabAlternateTarget, LabCameraEntity};
+use crate::{LabAlternateTarget, LabCameraEntity, LabReserveTarget};
 
 pub struct ThirdPersonCameraLabE2EPlugin;
 
@@ -68,6 +68,7 @@ fn scenario_by_name(name: &str) -> Option<Scenario> {
         "third_person_camera_smoke" => Some(build_smoke()),
         "third_person_camera_collision_corridor" => Some(build_collision()),
         "third_person_camera_shoulder_swap" => Some(build_shoulder_swap()),
+        "third_person_camera_lock_on" => Some(build_lock_on()),
         "third_person_camera_retarget" => Some(build_retarget()),
         _ => None,
     }
@@ -79,6 +80,7 @@ fn list_scenarios() -> Vec<&'static str> {
         "third_person_camera_smoke",
         "third_person_camera_collision_corridor",
         "third_person_camera_shoulder_swap",
+        "third_person_camera_lock_on",
         "third_person_camera_retarget",
     ]
 }
@@ -99,6 +101,11 @@ struct CollisionCheckpoint {
     corrected_distance: f32,
 }
 
+#[derive(Resource, Clone, Copy)]
+struct LockOnCheckpoint {
+    target: Entity,
+}
+
 fn store_collision_checkpoint(world: &mut World) {
     let Some(runtime) = runtime(world) else {
         return;
@@ -106,6 +113,40 @@ fn store_collision_checkpoint(world: &mut World) {
     world.insert_resource(CollisionCheckpoint {
         corrected_distance: runtime.corrected_distance,
     });
+}
+
+fn store_lock_on_checkpoint(world: &mut World) {
+    let Some(runtime) = runtime(world) else {
+        return;
+    };
+    let Some(target) = runtime.active_lock_on_target else {
+        return;
+    };
+    world.insert_resource(LockOnCheckpoint { target });
+}
+
+fn assign_lock_on_target(world: &mut World, target: Entity) {
+    let Some(entity) = camera_entity(world) else {
+        return;
+    };
+    let Some(mut lock_on) = world.get_mut::<ThirdPersonCameraLockOn>(entity) else {
+        return;
+    };
+    lock_on.active_target = Some(target);
+}
+
+fn assign_alternate_lock_on(world: &mut World) {
+    let Some(target) = world.get_resource::<LabAlternateTarget>() else {
+        return;
+    };
+    assign_lock_on_target(world, target.0);
+}
+
+fn assign_reserve_lock_on(world: &mut World) {
+    let Some(target) = world.get_resource::<LabReserveTarget>() else {
+        return;
+    };
+    assign_lock_on_target(world, target.0);
 }
 
 fn build_smoke_launch() -> Scenario {
@@ -235,6 +276,50 @@ fn build_shoulder_swap() -> Scenario {
         .then(inspect::dump_component_json::<ThirdPersonCameraRuntime>(
             "third_person_camera_shoulder_runtime",
         ))
+        .build()
+}
+
+fn build_lock_on() -> Scenario {
+    Scenario::builder("third_person_camera_lock_on")
+        .description("Drive the running camera through lock-on acquisition and a target swap, then capture the runtime handoff.")
+        .then(Action::WaitFrames(60))
+        .then(Action::Screenshot("third_person_camera_lock_on_before".into()))
+        .then(Action::WaitFrames(1))
+        .then(Action::Custom(Box::new(|world: &mut World| {
+            assign_alternate_lock_on(world);
+        })))
+        .then(Action::WaitFrames(20))
+        .then(assertions::component_satisfies::<ThirdPersonCameraRuntime>(
+            "lock-on acquired a target",
+            |runtime| runtime.active_lock_on_target.is_some() && runtime.lock_on_blend > 0.1,
+        ))
+        .then(Action::Custom(Box::new(|world: &mut World| {
+            store_lock_on_checkpoint(world);
+        })))
+        .then(Action::Custom(Box::new(|world: &mut World| {
+            assign_reserve_lock_on(world);
+        })))
+        .then(Action::WaitFrames(20))
+        .then(assertions::custom(
+            "lock-on cycled to a different target",
+            |world| {
+                let Some(runtime) = runtime(world) else {
+                    return false;
+                };
+                let Some(checkpoint) = world.get_resource::<LockOnCheckpoint>() else {
+                    return false;
+                };
+                runtime
+                    .active_lock_on_target
+                    .is_some_and(|target| target != checkpoint.target)
+            },
+        ))
+        .then(assertions::log_summary("third_person_camera_lock_on summary"))
+        .then(inspect::dump_component_json::<ThirdPersonCameraRuntime>(
+            "third_person_camera_lock_on_runtime",
+        ))
+        .then(Action::Screenshot("third_person_camera_lock_on_after".into()))
+        .then(Action::WaitFrames(1))
         .build()
 }
 

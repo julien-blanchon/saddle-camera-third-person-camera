@@ -30,6 +30,9 @@ uv run --project .codex/skills/bevy-brp/script brp app launch saddle-camera-thir
 Helpful controls:
 
 - `T` retargets the camera between the primary and alternate movers
+- `F` toggles lock-on
+- `E` cycles to the next lock-on candidate
+- `Z` cycles to the previous lock-on candidate
 - `C` swaps shoulders
 - right mouse button enters aim while held
 - `R` recenters

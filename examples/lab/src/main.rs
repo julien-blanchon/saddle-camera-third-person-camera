@@ -8,9 +8,9 @@ use bevy_brp_extras::BrpExtrasPlugin;
 #[cfg(feature = "e2e")]
 use saddle_bevy_e2e::E2ESet;
 use saddle_camera_third_person_camera::{
-    CollisionSettings, CollisionStrategy, ThirdPersonCamera, ThirdPersonCameraMode,
-    ThirdPersonCameraPlugin, ThirdPersonCameraRuntime, ThirdPersonCameraSettings,
-    ThirdPersonCameraSystems, ThirdPersonCameraTarget,
+    CollisionSettings, CollisionStrategy, LockOnSettings, ThirdPersonCamera,
+    ThirdPersonCameraMode, ThirdPersonCameraPlugin, ThirdPersonCameraRuntime,
+    ThirdPersonCameraSettings, ThirdPersonCameraSystems, ThirdPersonCameraTarget,
 };
 
 #[derive(Resource, Clone, Copy)]
@@ -21,6 +21,9 @@ pub struct LabPrimaryTarget(pub Entity);
 
 #[derive(Resource, Clone, Copy)]
 pub struct LabAlternateTarget(pub Entity);
+
+#[derive(Resource, Clone, Copy)]
+pub struct LabReserveTarget(pub Entity);
 
 fn main() {
     let mut app = App::new();
@@ -35,6 +38,8 @@ fn main() {
         }),
         ThirdPersonCameraPlugin::default(),
     ));
+    #[cfg(not(feature = "e2e"))]
+    common::add_debug_pane(&mut app);
     #[cfg(feature = "brp")]
     app.add_plugins(BrpExtrasPlugin::default());
     #[cfg(feature = "e2e")]
@@ -86,12 +91,25 @@ fn setup(
         &mut materials,
         "Lab Alternate Target",
         Color::srgb(0.24, 0.58, 0.82),
-        Vec3::new(5.5, 1.2, -4.0),
+        Vec3::new(3.4, 1.2, -10.0),
         common::DemoMotionPath::Circle {
-            center: Vec3::new(5.5, 1.2, -4.0),
-            radius: 2.0,
-            speed: -0.42,
+            center: Vec3::new(3.4, 1.2, -10.0),
+            radius: 1.4,
+            speed: -0.36,
             phase: 0.8,
+        },
+    );
+    let reserve = common::spawn_target(
+        &mut commands,
+        &mut meshes,
+        &mut materials,
+        "Lab Reserve Lock-On Target",
+        Color::srgb(0.52, 0.82, 0.46),
+        Vec3::new(-3.2, 1.25, -11.0),
+        common::DemoMotionPath::Hover {
+            center: Vec3::new(-3.2, 1.25, -11.0),
+            amplitude: 0.4,
+            speed: 0.9,
         },
     );
     common::spawn_box_obstacle(
@@ -119,6 +137,11 @@ fn setup(
                 sample_offset_y: 0.28,
                 ..default()
             },
+            lock_on: LockOnSettings {
+                enabled: true,
+                max_distance: 20.0,
+                ..default()
+            },
             auto_recenter: saddle_camera_third_person_camera::AutoRecenterSettings {
                 enabled: true,
                 ..default()
@@ -131,6 +154,7 @@ fn setup(
     commands.insert_resource(LabCameraEntity(camera));
     commands.insert_resource(LabPrimaryTarget(primary));
     commands.insert_resource(LabAlternateTarget(alternate));
+    commands.insert_resource(LabReserveTarget(reserve));
 }
 
 fn toggle_target(

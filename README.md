@@ -1,6 +1,6 @@
 # Saddle Camera Third Person Camera
 
-Reusable third-person camera rig for Bevy with orbit, zoom, shoulder framing, aim mode, cursor lock, obstruction handling, and crate-local lab verification.
+Reusable third-person camera rig for Bevy with orbit, zoom, shoulder framing, aim mode, lock-on targeting, screen-space framing, cursor lock, obstruction handling, and crate-local lab verification.
 
 The crate is built for generic third-person play rather than one specific genre. It can cover over-the-shoulder action cameras, centered platformer orbit cameras, inspection cameras with recentering disabled, and follow cameras for moving targets that finish motion late in the frame.
 
@@ -80,10 +80,11 @@ For always-on tools and crate-local examples, `ThirdPersonCameraPlugin::default(
 | `ThirdPersonCameraRuntime` | Readable runtime state for debugging and external systems: pivot, desired vs corrected distance, hit data, blends, and effective camera positions |
 | `ThirdPersonCameraInput` | Public input inbox for external systems that want to drive the camera directly |
 | `ThirdPersonCameraInputTarget` | Opt-in marker for the camera that should consume the shared BEI action context |
+| `ThirdPersonCameraLockOn` / `ThirdPersonCameraLockOnTarget` | Opt-in lock-on state and candidate marker for action-game targeting flows |
 | `ThirdPersonCameraObstacle` | Opt-in obstruction marker for entities that should shorten or block the camera boom |
 | `ThirdPersonCameraIgnore` / `ThirdPersonCameraIgnoreTarget` | Opt-in exclusions for camera collision and occlusion checks |
 | `ThirdPersonCameraDebug` | Per-camera debug drawing toggles |
-| `default_input_bindings()` | Default BEI action bundle for orbit, zoom, aim, recenter, cursor toggle, and shoulder controls |
+| `default_input_bindings()` | Default BEI action bundle for orbit, zoom, aim, recenter, cursor toggle, shoulder controls, and lock-on switching |
 
 ## Input Model
 
@@ -97,6 +98,7 @@ The crate owns a camera-oriented `bevy_enhanced_input` context. The default bind
 - `RecenterAction`: snap back to reference yaw and home pitch or distance
 - `CursorLockAction`: toggle cursor grab when enabled by policy
 - `ForceCenterModeAction` / `ForceShoulderModeAction`: explicit runtime mode switching
+- `ToggleLockOnAction`, `NextLockOnTargetAction`, `PreviousLockOnTargetAction`: action-game lock-on controls
 
 Only entities marked with `ThirdPersonCameraInputTarget` participate in shared input routing. If several active cameras have that marker, the highest `Camera.order` wins.
 
@@ -122,16 +124,26 @@ The default `MultiRay` strategy samples the boom center plus four near-plane-sty
 
 `CollisionSettings::include_shape_radius` controls whether obstacle padding and sample clearance include the configured probe radius. Disable it only when you explicitly want point-like casts.
 
+## Framing And Lock-On
+
+- `ScreenSpaceFramingSettings` lets the target drift inside a dead zone, then gently recenters inside a larger soft zone before hard follow kicks in.
+- `ThirdPersonCameraLockOn` keeps an active target entity, while nearby `ThirdPersonCameraLockOnTarget` markers provide candidates for toggle and cycle controls.
+- When lock-on is active, the runtime blends the look target toward the selected target and can bias pitch and framing for soulslike or action-combat camera behavior.
+
 ## Examples
 
 | Example | Purpose | Run |
 | --- | --- | --- |
 | `basic_follow` | Minimal follow, orbit, zoom, and pitch clamp | `cargo run -p saddle-camera-third-person-camera-example-basic-follow` |
+| `character_controller` | Third-person gameplay lane integrated with `saddle-character-controller`, lock-on drones, and a live controller pane | `cargo run -p saddle-camera-third-person-camera-example-character-controller` |
+| `lock_on` | Combat-style target lock, target cycling, and screen-space framing | `cargo run -p saddle-camera-third-person-camera-example-lock-on` |
 | `shoulder_aim` | Shoulder framing, aim transitions, and shoulder swap parity | `cargo run -p saddle-camera-third-person-camera-example-shoulder-aim` |
 | `collision_corridor` | Corridor, pillars, and beam obstruction pull-in or release | `cargo run -p saddle-camera-third-person-camera-example-collision-corridor` |
 | `physics_target` | Late target motion ordered before camera intent in `PostUpdate` | `cargo run -p saddle-camera-third-person-camera-example-physics-target` |
 | `gamepad` | Gamepad-focused orbit, zoom, and aim configuration | `cargo run -p saddle-camera-third-person-camera-example-gamepad` |
 | `runtime_retarget` | Runtime target switching between multiple tracked entities | `cargo run -p saddle-camera-third-person-camera-example-runtime-retarget` |
+
+Every example now includes a live `saddle-pane` panel so orbit, framing, and lock-on settings can be tuned while the scene is running.
 
 ## Crate-Local Lab
 
@@ -146,6 +158,7 @@ With E2E:
 ```bash
 cargo run -p saddle-camera-third-person-camera-lab --features e2e -- third_person_camera_smoke
 cargo run -p saddle-camera-third-person-camera-lab --features e2e -- third_person_camera_collision_corridor
+cargo run -p saddle-camera-third-person-camera-lab --features e2e -- third_person_camera_lock_on
 ```
 
 With BRP:
@@ -154,7 +167,7 @@ With BRP:
 uv run --project .codex/skills/bevy-brp/script brp app launch saddle-camera-third-person-camera-lab
 ```
 
-The lab itself supports interactive retargeting on `T`, which is also what the crate-local E2E retarget scenario drives.
+The lab itself supports interactive retargeting on `T`, lock-on on `F`, target cycling on `E` and `Z`, and cursor toggling on `Q`.
 
 ## More Docs
 

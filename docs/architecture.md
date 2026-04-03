@@ -29,6 +29,8 @@ Temporary input overrides are layered on top of the persistent mode:
 - `ShoulderHoldAction` temporarily drives the effective target mode to `Shoulder`
 - releasing either input returns the camera to the persistent mode
 
+Lock-on sits beside that mode stack. When active, it does not replace the base rig; it biases the runtime look target and target yaw toward the chosen combat target while the regular shoulder, zoom, and obstruction systems continue to operate.
+
 ## System Phases
 
 The runtime is intentionally broken into explicit phases:
@@ -36,7 +38,7 @@ The runtime is intentionally broken into explicit phases:
 1. `ReadInput`
    Aggregates the active `bevy_enhanced_input` context into `ThirdPersonCameraInput`. Only the highest-order active camera with `ThirdPersonCameraInputTarget` receives shared input.
 2. `UpdateIntent`
-   Samples the follow target, updates yaw or pitch or distance intent, applies manual or idle recentering, smooths pivot or orientation or zoom, and updates shoulder or aim blends.
+   Samples the follow target, updates yaw or pitch or distance intent, applies manual or idle recentering, resolves lock-on selection, smooths pivot or orientation or zoom, and updates shoulder or aim blends.
 3. `ResolveObstruction`
    Computes the unconstrained pose, tests it against opt-in obstacles, and derives `obstruction_distance`, `corrected_distance`, hit point, and hit normal.
 4. `ApplyTransform`
@@ -45,6 +47,16 @@ The runtime is intentionally broken into explicit phases:
    Draws pivot, desired boom, corrected boom, and hit state for cameras that carry `ThirdPersonCameraDebug`.
 
 `ReadInput` runs in the plugin's injected update schedule. The remaining phases run in `PostUpdate` so the camera can follow targets that finish authoritative motion late in the frame.
+
+## Screen-Space Framing
+
+When `ScreenSpaceFramingSettings` is enabled, the runtime does not immediately drag the pivot back to the exact target anchor. Instead it evaluates the target against three regions:
+
+1. dead zone: no camera response
+2. soft zone: gentle correction
+3. outside soft zone: direct catch-up
+
+That framing logic is applied before obstruction resolution, so the camera still uses the same desired vs corrected pose pipeline once the pivot has been adjusted.
 
 ## Ordering Guidance
 
@@ -65,6 +77,8 @@ The crate separates two yaw-reference decisions:
 - `AutoRecenterSettings::follow_alignment` controls idle recentering after input inactivity
 
 That split lets a game keep explicit recenter behavior tied to the tracked actor while still choosing whether passive recentering follows forward, follows motion heading, or stays fully free.
+
+Lock-on adds a third reference. If the active camera has a valid `ThirdPersonCameraLockOn::active_target`, the runtime can override manual or recenter yaw targets so the camera keeps the tracked enemy framed without throwing away the authored home values.
 
 ## Obstruction Strategy
 

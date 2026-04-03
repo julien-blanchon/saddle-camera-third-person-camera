@@ -1,9 +1,11 @@
 use bevy::prelude::*;
 use saddle_camera_third_person_camera::{
-    ThirdPersonCamera, ThirdPersonCameraDebug, ThirdPersonCameraInputTarget,
-    ThirdPersonCameraObstacle, ThirdPersonCameraSettings, ThirdPersonCameraTarget,
-    default_input_bindings,
+    default_input_bindings, ThirdPersonCamera, ThirdPersonCameraDebug,
+    ThirdPersonCameraInputTarget, ThirdPersonCameraLockOn, ThirdPersonCameraLockOnTarget,
+    ThirdPersonCameraObstacle, ThirdPersonCameraRuntime, ThirdPersonCameraSettings,
+    ThirdPersonCameraTarget,
 };
+use saddle_pane::prelude::*;
 
 #[derive(Component)]
 pub struct DemoOverlay;
@@ -32,6 +34,83 @@ pub enum DemoMotionPath {
 pub struct DemoTarget {
     pub motion: DemoMotionPath,
     pub face_velocity: bool,
+}
+
+#[derive(Resource, Pane)]
+#[pane(title = "Third Person Camera", position = "top-right")]
+pub struct ThirdPersonPane {
+    #[pane(tab = "Orbit", slider, min = 0.2, max = 4.0, step = 0.05)]
+    pub yaw_speed: f32,
+    #[pane(tab = "Orbit", slider, min = 0.2, max = 4.0, step = 0.05)]
+    pub pitch_speed: f32,
+    #[pane(tab = "Framing", slider, min = 2.0, max = 8.0, step = 0.1)]
+    pub default_distance: f32,
+    #[pane(tab = "Framing", slider, min = 0.0, max = 2.0, step = 0.05)]
+    pub shoulder_offset: f32,
+    #[pane(tab = "Framing")]
+    pub screen_framing_enabled: bool,
+    #[pane(tab = "Framing", slider, min = 0.0, max = 0.8, step = 0.01)]
+    pub dead_zone_x: f32,
+    #[pane(tab = "Framing", slider, min = 0.0, max = 0.8, step = 0.01)]
+    pub dead_zone_y: f32,
+    #[pane(tab = "Framing", slider, min = 0.05, max = 0.95, step = 0.01)]
+    pub soft_zone_x: f32,
+    #[pane(tab = "Framing", slider, min = 0.05, max = 0.95, step = 0.01)]
+    pub soft_zone_y: f32,
+    #[pane(tab = "Lock On")]
+    pub lock_on_enabled: bool,
+    #[pane(tab = "Lock On", slider, min = 4.0, max = 60.0, step = 0.5)]
+    pub lock_on_max_distance: f32,
+    #[pane(tab = "Runtime", monitor)]
+    pub obstruction_distance: f32,
+    #[pane(tab = "Runtime", monitor)]
+    pub obstruction_active: bool,
+    #[pane(tab = "Runtime", monitor)]
+    pub lock_target: String,
+}
+
+impl Default for ThirdPersonPane {
+    fn default() -> Self {
+        let settings = ThirdPersonCameraSettings::default();
+        Self {
+            yaw_speed: settings.orbit.yaw_speed,
+            pitch_speed: settings.orbit.pitch_speed,
+            default_distance: settings.zoom.default_distance,
+            shoulder_offset: settings.framing.shoulder_offset,
+            screen_framing_enabled: settings.screen_framing.enabled,
+            dead_zone_x: settings.screen_framing.dead_zone.x,
+            dead_zone_y: settings.screen_framing.dead_zone.y,
+            soft_zone_x: settings.screen_framing.soft_zone.x,
+            soft_zone_y: settings.screen_framing.soft_zone.y,
+            lock_on_enabled: settings.lock_on.enabled,
+            lock_on_max_distance: settings.lock_on.max_distance,
+            obstruction_distance: 0.0,
+            obstruction_active: false,
+            lock_target: "None".into(),
+        }
+    }
+}
+
+pub fn pane_plugins() -> (
+    bevy_flair::FlairPlugin,
+    bevy_input_focus::InputDispatchPlugin,
+    bevy_ui_widgets::UiWidgetsPlugins,
+    bevy_input_focus::tab_navigation::TabNavigationPlugin,
+    saddle_pane::PanePlugin,
+) {
+    (
+        bevy_flair::FlairPlugin,
+        bevy_input_focus::InputDispatchPlugin,
+        bevy_ui_widgets::UiWidgetsPlugins,
+        bevy_input_focus::tab_navigation::TabNavigationPlugin,
+        saddle_pane::PanePlugin,
+    )
+}
+
+pub fn add_debug_pane(app: &mut App) {
+    app.add_plugins(pane_plugins())
+        .register_pane::<ThirdPersonPane>()
+        .add_systems(Update, sync_pane_to_camera);
 }
 
 pub fn spawn_reference_world(
@@ -149,6 +228,7 @@ pub fn spawn_target(
                 motion,
                 face_velocity: true,
             },
+            ThirdPersonCameraLockOnTarget::default(),
             Mesh3d(meshes.add(Capsule3d::new(0.45, 1.2).mesh().rings(10).latitudes(14))),
             MeshMaterial3d(materials.add(StandardMaterial {
                 base_color: color,
@@ -157,6 +237,7 @@ pub fn spawn_target(
                 ..default()
             })),
             Transform::from_translation(translation),
+            GlobalTransform::from(Transform::from_translation(translation)),
         ))
         .id()
 }
@@ -248,6 +329,63 @@ pub fn animate_targets(time: Res<Time>, mut targets: Query<(&DemoTarget, &mut Tr
             }
         }
     }
+}
+
+fn sync_pane_to_camera(
+    mut pane: ResMut<ThirdPersonPane>,
+    mut cameras: Query<
+        (
+            &mut ThirdPersonCamera,
+            &mut ThirdPersonCameraSettings,
+            &ThirdPersonCameraRuntime,
+            &ThirdPersonCameraLockOn,
+        ),
+        With<ThirdPersonCamera>,
+    >,
+) {
+    let Some((mut camera, mut settings, runtime, lock_on)) = cameras.iter_mut().next() else {
+        return;
+    };
+    let pane_added = pane.is_added();
+
+    if pane_added {
+        let pane = pane.bypass_change_detection();
+        pane.yaw_speed = settings.orbit.yaw_speed;
+        pane.pitch_speed = settings.orbit.pitch_speed;
+        pane.default_distance = settings.zoom.default_distance;
+        pane.shoulder_offset = settings.framing.shoulder_offset;
+        pane.screen_framing_enabled = settings.screen_framing.enabled;
+        pane.dead_zone_x = settings.screen_framing.dead_zone.x;
+        pane.dead_zone_y = settings.screen_framing.dead_zone.y;
+        pane.soft_zone_x = settings.screen_framing.soft_zone.x;
+        pane.soft_zone_y = settings.screen_framing.soft_zone.y;
+        pane.lock_on_enabled = settings.lock_on.enabled;
+        pane.lock_on_max_distance = settings.lock_on.max_distance;
+    }
+
+    if pane.is_changed() && !pane_added {
+        settings.orbit.yaw_speed = pane.yaw_speed;
+        settings.orbit.pitch_speed = pane.pitch_speed;
+        settings.zoom.default_distance = pane.default_distance;
+        settings.framing.shoulder_offset = pane.shoulder_offset;
+        settings.screen_framing.enabled = pane.screen_framing_enabled;
+        settings.screen_framing.dead_zone = Vec2::new(pane.dead_zone_x, pane.dead_zone_y);
+        settings.screen_framing.soft_zone = Vec2::new(
+            pane.soft_zone_x.max(pane.dead_zone_x),
+            pane.soft_zone_y.max(pane.dead_zone_y),
+        );
+        settings.lock_on.enabled = pane.lock_on_enabled;
+        settings.lock_on.max_distance = pane.lock_on_max_distance;
+        camera.target_distance = pane.default_distance;
+    }
+
+    let pane = pane.bypass_change_detection();
+    pane.obstruction_distance = runtime.obstruction_distance;
+    pane.obstruction_active = runtime.obstruction_active;
+    pane.lock_target = lock_on
+        .active_target
+        .map(|entity| format!("{}", entity.to_bits()))
+        .unwrap_or_else(|| "None".into());
 }
 
 fn spawn_obstacle(

@@ -6,10 +6,11 @@ use saddle_camera_third_person_camera::{
 };
 
 fn main() {
-    App::new()
-        .add_plugins((DefaultPlugins, ThirdPersonCameraPlugin::default()))
-        .add_systems(Startup, setup)
-        .run();
+    let mut app = App::new();
+    app.add_plugins((DefaultPlugins, ThirdPersonCameraPlugin::default()));
+    common::add_debug_pane(&mut app);
+    app.add_systems(Startup, setup);
+    app.run();
 }
 
 fn setup(

@@ -147,6 +147,44 @@ impl Default for FramingSettings {
 }
 
 #[derive(Clone, Copy, Debug, Reflect)]
+pub struct ScreenSpaceFramingSettings {
+    pub enabled: bool,
+    pub dead_zone: Vec2,
+    pub soft_zone: Vec2,
+    pub screen_offset: Vec2,
+}
+
+impl Default for ScreenSpaceFramingSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            dead_zone: Vec2::new(0.18, 0.14),
+            soft_zone: Vec2::new(0.42, 0.32),
+            screen_offset: Vec2::ZERO,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Reflect)]
+pub struct LockOnSettings {
+    pub enabled: bool,
+    pub max_distance: f32,
+    pub focus_bias: f32,
+    pub pitch_offset: f32,
+}
+
+impl Default for LockOnSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            max_distance: 24.0,
+            focus_bias: 0.35,
+            pitch_offset: 0.08,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Reflect)]
 pub struct CollisionSettings {
     pub enabled: bool,
     pub strategy: CollisionStrategy,
@@ -211,7 +249,9 @@ pub struct ThirdPersonCameraSettings {
     pub smoothing: SmoothingSettings,
     pub zoom: ZoomSettings,
     pub framing: FramingSettings,
+    pub screen_framing: ScreenSpaceFramingSettings,
     pub collision: CollisionSettings,
+    pub lock_on: LockOnSettings,
     pub auto_recenter: AutoRecenterSettings,
     pub cursor: CursorPolicy,
 }
@@ -224,7 +264,9 @@ impl Default for ThirdPersonCameraSettings {
             smoothing: SmoothingSettings::default(),
             zoom: ZoomSettings::default(),
             framing: FramingSettings::default(),
+            screen_framing: ScreenSpaceFramingSettings::default(),
             collision: CollisionSettings::default(),
+            lock_on: LockOnSettings::default(),
             auto_recenter: AutoRecenterSettings::default(),
             cursor: CursorPolicy::default(),
         }

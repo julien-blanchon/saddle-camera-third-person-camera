@@ -1,21 +1,22 @@
 use std::collections::HashSet;
 
 use bevy::{
-    camera::primitives::Aabb,
+    camera::{primitives::Aabb, Projection},
     prelude::*,
     transform::helper::TransformHelper,
     window::{CursorGrabMode, CursorOptions, PrimaryWindow},
 };
 
 use crate::{
+    math::{
+        camera_pose_from_look_target, forward_from_angles, segment_aabb_hit, smooth_angle,
+        smooth_scalar, smooth_vec3, wrap_angle, yaw_from_direction, yaw_pitch_rotation, CameraPose,
+    },
     CollisionStrategy, ShoulderSide, ThirdPersonCamera, ThirdPersonCameraIgnore,
     ThirdPersonCameraIgnoreTarget, ThirdPersonCameraInput, ThirdPersonCameraInputTarget,
-    ThirdPersonCameraMode, ThirdPersonCameraObstacle, ThirdPersonCameraRuntime,
-    ThirdPersonCameraSettings, ThirdPersonCameraTarget,
-    math::{
-        CameraPose, camera_pose_from_look_target, forward_from_angles, segment_aabb_hit,
-        smooth_angle, smooth_scalar, smooth_vec3, wrap_angle, yaw_from_direction,
-    },
+    ThirdPersonCameraLockOn, ThirdPersonCameraLockOnTarget, ThirdPersonCameraMode,
+    ThirdPersonCameraObstacle, ThirdPersonCameraRuntime, ThirdPersonCameraSettings,
+    ThirdPersonCameraTarget,
 };
 
 #[derive(Resource, Default, Clone, Copy)]
@@ -79,9 +80,104 @@ pub(crate) fn route_active_input(
         .map(|(entity, _, _)| entity);
     active_input_camera.0 = active;
 
-    for (entity, mut input) in &mut cameras.p1() {
-        if Some(entity) != active {
-            input.clear_transient();
+    if let Some(active) = active {
+        for (entity, mut input) in &mut cameras.p1() {
+            if entity != active {
+                input.clear_transient();
+            }
+        }
+    }
+}
+
+pub(crate) fn update_lock_on_selection(
+    helper: TransformHelper,
+    candidates: Query<(Entity, &ThirdPersonCameraLockOnTarget, Option<&GlobalTransform>)>,
+    mut cameras: Query<(
+        &ThirdPersonCamera,
+        &ThirdPersonCameraSettings,
+        Option<&ThirdPersonCameraTarget>,
+        &ThirdPersonCameraInput,
+        &mut ThirdPersonCameraLockOn,
+        &ThirdPersonCameraRuntime,
+    )>,
+) {
+    for (camera, settings, target, input, mut lock_on, runtime) in &mut cameras {
+        if !settings.lock_on.enabled {
+            lock_on.active_target = None;
+            continue;
+        }
+
+        let Some(target) = target else {
+            lock_on.active_target = None;
+            continue;
+        };
+        if !target.enabled {
+            lock_on.active_target = None;
+            continue;
+        }
+
+        let Some(follow_anchor) = follow_target_anchor(
+            &helper,
+            target,
+            camera,
+            settings,
+            runtime.last_target_position,
+        ) else {
+            lock_on.active_target = None;
+            continue;
+        };
+        let origin = if runtime.pivot == Vec3::ZERO {
+            follow_anchor
+        } else {
+            runtime.pivot
+        };
+
+        if !active_lock_on_target_is_valid(
+            &helper,
+            &candidates,
+            lock_on.active_target,
+            target.target,
+            origin,
+            settings.lock_on.max_distance,
+        ) {
+            lock_on.active_target = None;
+        }
+
+        if input.lock_on_toggle {
+            lock_on.active_target = if lock_on.active_target.is_some() {
+                None
+            } else {
+                select_best_lock_on_candidate(
+                    &helper,
+                    &candidates,
+                    origin,
+                    camera.target_yaw,
+                    settings.lock_on.max_distance,
+                    target.target,
+                )
+            };
+        } else if input.lock_on_next {
+            lock_on.active_target = cycle_lock_on_candidate(
+                &helper,
+                &candidates,
+                origin,
+                camera.target_yaw,
+                lock_on.active_target,
+                settings.lock_on.max_distance,
+                target.target,
+                true,
+            );
+        } else if input.lock_on_previous {
+            lock_on.active_target = cycle_lock_on_candidate(
+                &helper,
+                &candidates,
+                origin,
+                camera.target_yaw,
+                lock_on.active_target,
+                settings.lock_on.max_distance,
+                target.target,
+                false,
+            );
         }
     }
 }
@@ -93,19 +189,32 @@ pub(crate) fn update_camera_runtime(
     children: Query<&Children>,
     ignored: Query<Entity, With<ThirdPersonCameraIgnore>>,
     ignored_targets: Query<Entity, With<ThirdPersonCameraIgnoreTarget>>,
+    lock_on_targets: Query<(&ThirdPersonCameraLockOnTarget, Option<&GlobalTransform>)>,
     mut ignore_scratch: Local<HashSet<Entity>>,
     mut primary_window: Query<&mut CursorOptions, With<PrimaryWindow>>,
     mut cameras: Query<(
         Entity,
+        &Projection,
         &mut ThirdPersonCamera,
         &ThirdPersonCameraSettings,
         Option<Ref<'_, ThirdPersonCameraTarget>>,
+        &mut ThirdPersonCameraLockOn,
         &mut ThirdPersonCameraRuntime,
         &ThirdPersonCameraInput,
     )>,
 ) {
     let dt = time.delta_secs();
-    for (camera_entity, mut camera, settings, target, mut runtime, input) in &mut cameras {
+    for (
+        camera_entity,
+        projection,
+        mut camera,
+        settings,
+        target,
+        mut lock_on,
+        mut runtime,
+        input,
+    ) in &mut cameras
+    {
         if !settings.enabled {
             continue;
         }
@@ -133,9 +242,16 @@ pub(crate) fn update_camera_runtime(
         };
 
         let target_changed = target.as_ref().is_some_and(|target| target.is_changed());
-        runtime.target_pivot = sampled.look_anchor;
+        let desired_pivot = apply_screen_space_framing(
+            projection,
+            &camera,
+            settings,
+            runtime.pivot,
+            sampled.look_anchor,
+        );
+        runtime.target_pivot = desired_pivot;
         if runtime.pivot == Vec3::ZERO || target_changed {
-            runtime.pivot = sampled.look_anchor;
+            runtime.pivot = desired_pivot;
         }
         runtime.last_target_position = sampled.target_position;
 
@@ -151,7 +267,12 @@ pub(crate) fn update_camera_runtime(
                     .is_some_and(|value| value.recenter_on_target_change),
         );
 
-        let desired_mode = effective_target_mode(camera.target_mode, input, settings);
+        let desired_mode = effective_target_mode(
+            camera.target_mode,
+            input,
+            settings,
+            lock_on.active_target.is_some(),
+        );
 
         runtime.idle_seconds = if input.has_manual_motion() {
             0.0
@@ -175,6 +296,39 @@ pub(crate) fn update_camera_runtime(
             settings.smoothing.target_follow_smoothing,
             dt,
         );
+
+        if settings.lock_on.enabled {
+            if let Some(lock_target) = lock_on.active_target {
+                let valid_anchor = lock_on_target_anchor(&helper, &lock_on_targets, lock_target)
+                    .filter(|anchor| {
+                        runtime.pivot.distance(*anchor) <= settings.lock_on.max_distance
+                    });
+                if let Some(anchor) = valid_anchor {
+                    runtime.lock_on_focus = runtime
+                        .pivot
+                        .lerp(anchor, settings.lock_on.focus_bias.clamp(0.0, 1.0));
+                    runtime.target_lock_on_blend = 1.0;
+                    runtime.active_lock_on_target = Some(lock_target);
+                    if let Some(yaw) = yaw_from_direction(anchor - runtime.pivot) {
+                        camera.target_yaw = yaw;
+                    }
+                    camera.target_pitch = settings
+                        .clamped_pitch(camera.home_pitch - settings.lock_on.pitch_offset.abs());
+                } else {
+                    lock_on.active_target = None;
+                    runtime.target_lock_on_blend = 0.0;
+                    runtime.active_lock_on_target = None;
+                }
+            } else {
+                runtime.target_lock_on_blend = 0.0;
+                runtime.active_lock_on_target = None;
+            }
+        } else {
+            lock_on.active_target = None;
+            runtime.target_lock_on_blend = 0.0;
+            runtime.active_lock_on_target = None;
+        }
+
         camera.target_pitch = settings.clamped_pitch(camera.target_pitch);
         camera.target_distance = clamp_camera_distance(camera.target_distance, settings, &camera);
         camera.yaw = smooth_angle(
@@ -208,6 +362,12 @@ pub(crate) fn update_camera_runtime(
         runtime.aim_blend = smooth_scalar(
             runtime.aim_blend,
             runtime.target_aim_blend,
+            settings.smoothing.aim_blend,
+            dt,
+        );
+        runtime.lock_on_blend = smooth_scalar(
+            runtime.lock_on_blend,
+            runtime.target_lock_on_blend,
             settings.smoothing.aim_blend,
             dt,
         );
@@ -256,12 +416,13 @@ pub(crate) fn resolve_obstruction(
             continue;
         }
 
-        let look_target = runtime.pivot
+        let base_look_target = runtime.pivot
             + right_offset(
                 camera.yaw,
                 runtime.shoulder_blend,
                 settings.framing.shoulder_offset,
             );
+        let look_target = base_look_target.lerp(runtime.lock_on_focus, runtime.lock_on_blend);
         let aim_pitch = camera.pitch + settings.framing.aim_pitch_offset * runtime.aim_blend;
         let aim_scale = 1.0 - (1.0 - settings.framing.aim_distance_scale) * runtime.aim_blend;
         let minimum_distance =
@@ -456,8 +617,9 @@ fn effective_target_mode(
     persistent_mode: ThirdPersonCameraMode,
     input: &ThirdPersonCameraInput,
     settings: &ThirdPersonCameraSettings,
+    lock_on_active: bool,
 ) -> ThirdPersonCameraMode {
-    if settings.framing.aim_enabled && input.aim {
+    if settings.framing.aim_enabled && (input.aim || lock_on_active) {
         ThirdPersonCameraMode::Aim
     } else if input.shoulder_hold {
         ThirdPersonCameraMode::Shoulder
@@ -506,8 +668,91 @@ fn apply_cursor_lock(
     };
 }
 
+fn apply_screen_space_framing(
+    projection: &Projection,
+    camera: &ThirdPersonCamera,
+    settings: &ThirdPersonCameraSettings,
+    current_pivot: Vec3,
+    look_anchor: Vec3,
+) -> Vec3 {
+    if !settings.screen_framing.enabled {
+        return look_anchor;
+    }
+
+    let reference_pivot = if current_pivot == Vec3::ZERO {
+        look_anchor
+    } else {
+        current_pivot
+    };
+    let orientation = yaw_pitch_rotation(camera.yaw, camera.pitch);
+    let right = orientation * Vec3::X;
+    let up = orientation * Vec3::Y;
+    let forward = orientation * -Vec3::Z;
+    let distance = camera.distance.max(settings.zoom.min_distance).max(0.1);
+    let (half_width, half_height) = screen_half_extents(projection, distance);
+    let desired_offset = Vec2::new(
+        settings.screen_framing.screen_offset.x * half_width,
+        settings.screen_framing.screen_offset.y * half_height,
+    );
+    let anchor = look_anchor - right * desired_offset.x - up * desired_offset.y;
+    let delta = anchor - reference_pivot;
+    let local = Vec3::new(delta.dot(right), delta.dot(up), delta.dot(forward));
+
+    let dead_zone = settings
+        .screen_framing
+        .dead_zone
+        .max(Vec2::ZERO)
+        .min(Vec2::splat(0.95));
+    let soft_zone = settings
+        .screen_framing
+        .soft_zone
+        .max(dead_zone)
+        .min(Vec2::splat(0.99));
+    let dead_world = Vec2::new(half_width * dead_zone.x, half_height * dead_zone.y);
+    let soft_world = Vec2::new(half_width * soft_zone.x, half_height * soft_zone.y);
+    let correction_x = soft_zone_correction(local.x, dead_world.x, soft_world.x);
+    let correction_y = soft_zone_correction(local.y, dead_world.y, soft_world.y);
+
+    reference_pivot + right * correction_x + up * correction_y + forward * local.z
+}
+
 fn right_offset(yaw: f32, shoulder_blend: f32, offset: f32) -> Vec3 {
     Quat::from_rotation_y(yaw) * Vec3::X * (offset * shoulder_blend)
+}
+
+fn screen_half_extents(projection: &Projection, distance: f32) -> (f32, f32) {
+    match projection {
+        Projection::Perspective(perspective) => {
+            let half_height = (perspective.fov * 0.5).tan() * distance;
+            let half_width = half_height * perspective.aspect_ratio.max(0.1);
+            (half_width, half_height)
+        }
+        Projection::Orthographic(orthographic) => (
+            (orthographic.area.max.x - orthographic.area.min.x).abs() * 0.5,
+            (orthographic.area.max.y - orthographic.area.min.y).abs() * 0.5,
+        ),
+        Projection::Custom(_) => {
+            let half_height = distance * 0.5;
+            (half_height, half_height)
+        }
+    }
+}
+
+fn soft_zone_correction(value: f32, dead_zone: f32, soft_zone: f32) -> f32 {
+    let magnitude = value.abs();
+    let sign = value.signum();
+    if magnitude <= dead_zone {
+        0.0
+    } else if soft_zone <= dead_zone + 0.000_1 {
+        sign * (magnitude - dead_zone)
+    } else if magnitude <= soft_zone {
+        let beyond_dead = magnitude - dead_zone;
+        let span = (soft_zone - dead_zone).max(0.000_1);
+        let softness = beyond_dead / span;
+        sign * beyond_dead * softness
+    } else {
+        sign * (magnitude - soft_zone)
+    }
 }
 
 fn collect_descendants(
@@ -521,6 +766,199 @@ fn collect_descendants(
             collect_descendants(child, children, ignore_set);
         }
     }
+}
+
+fn follow_target_anchor(
+    helper: &TransformHelper,
+    target: &ThirdPersonCameraTarget,
+    camera: &ThirdPersonCamera,
+    settings: &ThirdPersonCameraSettings,
+    fallback_target_position: Vec3,
+) -> Option<Vec3> {
+    let global = helper.compute_global_transform(target.target).ok();
+    let (rotation, target_position) = if let Some(global) = global {
+        let (_, rotation, translation) = global.to_scale_rotation_translation();
+        (rotation, translation + rotation * target.offset)
+    } else {
+        (Quat::IDENTITY, fallback_target_position)
+    };
+    Some(
+        target_position
+            + rotation * Vec3::ZERO
+            + Vec3::Y
+                * (settings.framing.shoulder_height
+                    + settings.framing.target_radius_clearance
+                    + camera.large_target_radius),
+    )
+}
+
+fn lock_on_target_anchor(
+    helper: &TransformHelper,
+    candidates: &Query<(&ThirdPersonCameraLockOnTarget, Option<&GlobalTransform>)>,
+    entity: Entity,
+) -> Option<Vec3> {
+    let (candidate, global_transform) = candidates.get(entity).ok()?;
+    let global = helper
+        .compute_global_transform(entity)
+        .ok()
+        .or_else(|| global_transform.copied())?;
+    let (_, rotation, translation) = global.to_scale_rotation_translation();
+    Some(translation + rotation * candidate.offset)
+}
+
+fn active_lock_on_target_is_valid(
+    helper: &TransformHelper,
+    candidates: &Query<(Entity, &ThirdPersonCameraLockOnTarget, Option<&GlobalTransform>)>,
+    active_target: Option<Entity>,
+    followed_entity: Entity,
+    origin: Vec3,
+    max_distance: f32,
+) -> bool {
+    let Some(active_target) = active_target else {
+        return false;
+    };
+    if active_target == followed_entity {
+        return false;
+    }
+    let Ok((_, candidate, global_transform)) = candidates.get(active_target) else {
+        return false;
+    };
+    let Some(global) = helper
+        .compute_global_transform(active_target)
+        .ok()
+        .or_else(|| global_transform.copied())
+    else {
+        return false;
+    };
+    let (_, rotation, translation) = global.to_scale_rotation_translation();
+    let anchor = translation + rotation * candidate.offset;
+    origin.distance(anchor) <= max_distance
+}
+
+fn select_best_lock_on_candidate(
+    helper: &TransformHelper,
+    candidates: &Query<(Entity, &ThirdPersonCameraLockOnTarget, Option<&GlobalTransform>)>,
+    origin: Vec3,
+    current_yaw: f32,
+    max_distance: f32,
+    followed_entity: Entity,
+) -> Option<Entity> {
+    let forward = Vec2::new(current_yaw.sin(), current_yaw.cos()).normalize_or_zero();
+    let mut best = None;
+    let mut best_score = f32::NEG_INFINITY;
+
+    for (entity, candidate, global_transform) in candidates.iter() {
+        if entity == followed_entity {
+            continue;
+        }
+        let Some(global) = helper
+            .compute_global_transform(entity)
+            .ok()
+            .or_else(|| global_transform.copied())
+        else {
+            continue;
+        };
+        let (_, rotation, translation) = global.to_scale_rotation_translation();
+        let anchor = translation + rotation * candidate.offset;
+        let direction = anchor - origin;
+        let horizontal = Vec2::new(direction.x, direction.z);
+        let horizontal_length = horizontal.length();
+        if horizontal_length <= 0.000_1 {
+            continue;
+        }
+        let distance = direction.length();
+        if distance > max_distance {
+            continue;
+        }
+
+        let facing = forward.dot(horizontal / horizontal_length);
+        if facing < -0.35 {
+            continue;
+        }
+        let score = facing * 2.0 + candidate.priority - distance / max_distance.max(0.001);
+        if score > best_score {
+            best_score = score;
+            best = Some(entity);
+        }
+    }
+
+    best
+}
+
+fn cycle_lock_on_candidate(
+    helper: &TransformHelper,
+    candidates: &Query<(Entity, &ThirdPersonCameraLockOnTarget, Option<&GlobalTransform>)>,
+    origin: Vec3,
+    current_yaw: f32,
+    active_target: Option<Entity>,
+    max_distance: f32,
+    followed_entity: Entity,
+    forward_cycle: bool,
+) -> Option<Entity> {
+    let base_yaw = active_target
+        .and_then(|entity| {
+            let candidate = candidates.get(entity).ok()?;
+            let global = helper
+                .compute_global_transform(entity)
+                .ok()
+                .or_else(|| candidate.2.copied())?;
+            let (_, rotation, translation) = global.to_scale_rotation_translation();
+            let anchor = translation + rotation * candidate.1.offset;
+            yaw_from_direction(anchor - origin)
+        })
+        .unwrap_or(current_yaw);
+
+    let mut best = None;
+    let mut best_delta = f32::INFINITY;
+
+    for (entity, candidate, global_transform) in candidates.iter() {
+        if entity == followed_entity || Some(entity) == active_target {
+            continue;
+        }
+        let Some(global) = helper
+            .compute_global_transform(entity)
+            .ok()
+            .or_else(|| global_transform.copied())
+        else {
+            continue;
+        };
+        let (_, rotation, translation) = global.to_scale_rotation_translation();
+        let anchor = translation + rotation * candidate.offset;
+        if origin.distance(anchor) > max_distance {
+            continue;
+        }
+        let Some(candidate_yaw) = yaw_from_direction(anchor - origin) else {
+            continue;
+        };
+        let delta = wrap_angle(candidate_yaw - base_yaw);
+        let directional_delta = if forward_cycle {
+            if delta <= 0.01 {
+                continue;
+            }
+            delta
+        } else {
+            if delta >= -0.01 {
+                continue;
+            }
+            -delta
+        };
+
+        if directional_delta < best_delta {
+            best_delta = directional_delta;
+            best = Some(entity);
+        }
+    }
+
+    best.or_else(|| {
+        select_best_lock_on_candidate(
+            helper,
+            candidates,
+            origin,
+            current_yaw,
+            max_distance,
+            followed_entity,
+        )
+    })
 }
 
 #[derive(Clone, Copy, Debug)]

@@ -7,14 +7,15 @@ use saddle_camera_third_person_camera::{
 };
 
 fn main() {
-    App::new()
-        .add_plugins((DefaultPlugins, ThirdPersonCameraPlugin::default()))
-        .add_systems(Startup, setup)
-        .add_systems(
-            PostUpdate,
-            common::animate_targets.before(ThirdPersonCameraSystems::UpdateIntent),
-        )
-        .run();
+    let mut app = App::new();
+    app.add_plugins((DefaultPlugins, ThirdPersonCameraPlugin::default()));
+    common::add_debug_pane(&mut app);
+    app.add_systems(Startup, setup);
+    app.add_systems(
+        PostUpdate,
+        common::animate_targets.before(ThirdPersonCameraSystems::UpdateIntent),
+    );
+    app.run();
 }
 
 fn setup(
