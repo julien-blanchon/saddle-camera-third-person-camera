@@ -7,7 +7,6 @@ publish = false
 [dependencies]
 bevy = { workspace = true }
 saddle-camera-third-person-camera = { workspace = true }
-saddle-camera-third-person-camera-example-common = { path = "../common" }
 
 [lints]
 workspace = true
