@@ -88,7 +88,15 @@ fn setup(
     // input bindings include shoulder-hold (LT), aim (RT), swap (d-pad
     // right), recenter (North), and cursor toggle (West).
     let camera = ThirdPersonCamera::default().with_mode(ThirdPersonCameraMode::Shoulder);
-    let settings = ThirdPersonCameraSettings::default();
+    // shoulder_height is tuned for capsule-centered targets.
+    let settings = ThirdPersonCameraSettings {
+        framing: saddle_camera_third_person_camera::FramingSettings {
+            shoulder_height: 0.55,
+            aim_height_offset: -0.25,
+            ..default()
+        },
+        ..default()
+    };
 
     commands.spawn((
         Name::new("Gamepad Camera"),
@@ -144,8 +152,12 @@ fn animate_target(time: Res<Time>, mut targets: Query<(&CircleTarget, &mut Trans
     for (circle, mut transform) in &mut targets {
         let previous = transform.translation;
         let angle = circle.phase + time.elapsed_secs() * circle.speed;
-        transform.translation =
-            circle.center + Vec3::new(angle.cos() * circle.radius, 0.0, angle.sin() * circle.radius);
+        transform.translation = circle.center
+            + Vec3::new(
+                angle.cos() * circle.radius,
+                0.0,
+                angle.sin() * circle.radius,
+            );
 
         // Face the direction of movement
         let velocity = transform.translation - previous;

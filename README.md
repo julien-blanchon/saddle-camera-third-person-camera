@@ -75,7 +75,7 @@ For always-on tools and crate-local examples, `ThirdPersonCameraPlugin::default(
 | `ThirdPersonCameraPlugin` | Registers the runtime with injectable activate, deactivate, and update schedules |
 | `ThirdPersonCameraSystems` | Public ordering hooks: `ReadInput`, `UpdateIntent`, `ResolveObstruction`, `ApplyTransform`, `DebugDraw` |
 | `ThirdPersonCamera` | Main camera state: yaw, pitch, distance, persistent mode, shoulder side, large-target radius, and stored home values |
-| `ThirdPersonCameraSettings` | Top-level tuning surface for orbit, smoothing, zoom, framing, collision, recentering, and cursor policy |
+| `ThirdPersonCameraSettings` | Top-level tuning surface for orbit, smoothing, zoom, framing (including `aim_height_offset`), collision, recentering, and cursor policy |
 | `ThirdPersonCameraTarget` | Follow-target descriptor: tracked entity, target-local offset, ignore rules, and retarget behavior |
 | `ThirdPersonCameraRuntime` | Readable runtime state for debugging and external systems: pivot, desired vs corrected distance, hit data, blends, and effective camera positions |
 | `ThirdPersonCameraInput` | Public input inbox for external systems that want to drive the camera directly |

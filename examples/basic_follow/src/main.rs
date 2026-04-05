@@ -9,7 +9,7 @@
 
 use bevy::prelude::*;
 use saddle_camera_third_person_camera::{
-    ThirdPersonCamera, ThirdPersonCameraInputTarget, ThirdPersonCameraObstacle,
+    FramingSettings, ThirdPersonCamera, ThirdPersonCameraInputTarget, ThirdPersonCameraObstacle,
     ThirdPersonCameraPlugin, ThirdPersonCameraSettings, ThirdPersonCameraTarget,
     default_input_bindings,
 };
@@ -85,13 +85,22 @@ fn setup(
     // follow. `default_input_bindings()` wires mouse + gamepad via
     // bevy_enhanced_input so orbit, zoom, recenter, and cursor lock work
     // out of the box.
+    // shoulder_height is tuned for capsule-centered targets (origin at capsule
+    // midpoint ~1.1 above ground).  The default 1.35 is for foot-anchored
+    // characters.
     let camera = ThirdPersonCamera::default();
-    let settings = ThirdPersonCameraSettings::default();
+    let settings = ThirdPersonCameraSettings {
+        framing: FramingSettings {
+            shoulder_height: 0.55,
+            ..default()
+        },
+        ..default()
+    };
 
     commands.spawn((
         Name::new("Basic Follow Camera"),
         Camera3d::default(),
-        Transform::from_xyz(0.0, 2.4, 6.5).looking_at(Vec3::new(0.0, 1.5, 0.0), Vec3::Y),
+        Transform::from_xyz(0.0, 2.0, 6.5).looking_at(Vec3::new(0.0, 1.5, 0.0), Vec3::Y),
         camera,
         settings,
         ThirdPersonCameraTarget::new(target),
@@ -137,7 +146,11 @@ struct HoverTarget {
 
 fn animate_target(time: Res<Time>, mut targets: Query<(&HoverTarget, &mut Transform)>) {
     for (hover, mut transform) in &mut targets {
-        transform.translation =
-            hover.center + Vec3::new(0.0, (time.elapsed_secs() * hover.speed).sin() * hover.amplitude, 0.0);
+        transform.translation = hover.center
+            + Vec3::new(
+                0.0,
+                (time.elapsed_secs() * hover.speed).sin() * hover.amplitude,
+                0.0,
+            );
     }
 }

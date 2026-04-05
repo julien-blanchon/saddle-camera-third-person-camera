@@ -1,22 +1,23 @@
 use std::collections::HashSet;
 
 use bevy::{
-    camera::{primitives::Aabb, Projection},
+    camera::{Projection, primitives::Aabb},
     prelude::*,
     transform::helper::TransformHelper,
     window::{CursorGrabMode, CursorOptions, PrimaryWindow},
 };
 
 use crate::{
-    math::{
-        camera_pose_from_look_target, forward_from_angles, segment_aabb_hit, smooth_angle,
-        smooth_scalar, smooth_vec3, wrap_angle, yaw_from_direction, yaw_pitch_rotation, CameraPose,
-    },
     CollisionStrategy, ShoulderSide, ThirdPersonCamera, ThirdPersonCameraIgnore,
     ThirdPersonCameraIgnoreTarget, ThirdPersonCameraInput, ThirdPersonCameraInputTarget,
     ThirdPersonCameraLockOn, ThirdPersonCameraLockOnTarget, ThirdPersonCameraMode,
     ThirdPersonCameraObstacle, ThirdPersonCameraRuntime, ThirdPersonCameraSettings,
     ThirdPersonCameraTarget,
+    math::{
+        CameraPose, camera_pose_from_look_target, forward_from_angles, segment_aabb_hit,
+        smooth_angle, smooth_scalar, smooth_vec3, wrap_angle, yaw_from_direction,
+        yaw_pitch_rotation,
+    },
 };
 
 #[derive(Resource, Default, Clone, Copy)]
@@ -91,7 +92,11 @@ pub(crate) fn route_active_input(
 
 pub(crate) fn update_lock_on_selection(
     helper: TransformHelper,
-    candidates: Query<(Entity, &ThirdPersonCameraLockOnTarget, Option<&GlobalTransform>)>,
+    candidates: Query<(
+        Entity,
+        &ThirdPersonCameraLockOnTarget,
+        Option<&GlobalTransform>,
+    )>,
     mut cameras: Query<(
         &ThirdPersonCamera,
         &ThirdPersonCameraSettings,
@@ -421,7 +426,8 @@ pub(crate) fn resolve_obstruction(
                 camera.yaw,
                 runtime.shoulder_blend,
                 settings.framing.shoulder_offset,
-            );
+            )
+            + Vec3::Y * (settings.framing.aim_height_offset * runtime.aim_blend);
         let look_target = base_look_target.lerp(runtime.lock_on_focus, runtime.lock_on_blend);
         let aim_pitch = camera.pitch + settings.framing.aim_pitch_offset * runtime.aim_blend;
         let aim_scale = 1.0 - (1.0 - settings.framing.aim_distance_scale) * runtime.aim_blend;
@@ -808,7 +814,11 @@ fn lock_on_target_anchor(
 
 fn active_lock_on_target_is_valid(
     helper: &TransformHelper,
-    candidates: &Query<(Entity, &ThirdPersonCameraLockOnTarget, Option<&GlobalTransform>)>,
+    candidates: &Query<(
+        Entity,
+        &ThirdPersonCameraLockOnTarget,
+        Option<&GlobalTransform>,
+    )>,
     active_target: Option<Entity>,
     followed_entity: Entity,
     origin: Vec3,
@@ -837,7 +847,11 @@ fn active_lock_on_target_is_valid(
 
 fn select_best_lock_on_candidate(
     helper: &TransformHelper,
-    candidates: &Query<(Entity, &ThirdPersonCameraLockOnTarget, Option<&GlobalTransform>)>,
+    candidates: &Query<(
+        Entity,
+        &ThirdPersonCameraLockOnTarget,
+        Option<&GlobalTransform>,
+    )>,
     origin: Vec3,
     current_yaw: f32,
     max_distance: f32,
@@ -887,7 +901,11 @@ fn select_best_lock_on_candidate(
 
 fn cycle_lock_on_candidate(
     helper: &TransformHelper,
-    candidates: &Query<(Entity, &ThirdPersonCameraLockOnTarget, Option<&GlobalTransform>)>,
+    candidates: &Query<(
+        Entity,
+        &ThirdPersonCameraLockOnTarget,
+        Option<&GlobalTransform>,
+    )>,
     origin: Vec3,
     current_yaw: f32,
     active_target: Option<Entity>,

@@ -2,12 +2,12 @@ use bevy::prelude::*;
 use bevy::state::app::StatesPlugin;
 
 use crate::{
-    shortest_angle_delta, AutoRecenterSettings, CollisionStrategy, FollowAlignment, LockOnSettings,
+    AutoRecenterSettings, CollisionStrategy, FollowAlignment, LockOnSettings,
     ScreenSpaceFramingSettings, ShoulderSide, SmoothingSettings, ThirdPersonCamera,
     ThirdPersonCameraIgnore, ThirdPersonCameraInput, ThirdPersonCameraInputTarget,
     ThirdPersonCameraLockOn, ThirdPersonCameraLockOnTarget, ThirdPersonCameraObstacle,
     ThirdPersonCameraPlugin, ThirdPersonCameraRuntime, ThirdPersonCameraSettings,
-    ThirdPersonCameraSystems, ThirdPersonCameraTarget,
+    ThirdPersonCameraSystems, ThirdPersonCameraTarget, shortest_angle_delta,
 };
 
 #[derive(States, Debug, Default, Clone, Copy, Eq, PartialEq, Hash)]
@@ -514,4 +514,59 @@ fn screen_framing_dead_zone_absorbs_small_motion() {
         .unwrap()
         .pivot;
     assert!(large_motion_pivot.x > small_motion_pivot.x + 0.3);
+}
+
+#[test]
+fn aim_mode_lowers_look_target_via_aim_height_offset() {
+    let mut app = test_app();
+    let target = spawn_target(&mut app, "Target", Transform::default());
+    let camera = app
+        .world_mut()
+        .spawn((
+            ThirdPersonCamera::default(),
+            ThirdPersonCameraTarget::new(target),
+            ThirdPersonCameraInputTarget,
+            ThirdPersonCameraSettings {
+                framing: crate::FramingSettings {
+                    aim_height_offset: -0.5,
+                    ..default()
+                },
+                smoothing: SmoothingSettings {
+                    aim_blend: 0.0,
+                    shoulder_blend: 0.0,
+                    orientation_smoothing: 0.0,
+                    target_follow_smoothing: 0.0,
+                    zoom_smoothing: 0.0,
+                    obstruction_pull_in: 0.0,
+                    obstruction_release: 0.0,
+                },
+                ..default()
+            },
+        ))
+        .id();
+
+    app.update();
+    let baseline_y = app
+        .world()
+        .get::<ThirdPersonCameraRuntime>(camera)
+        .unwrap()
+        .look_target
+        .y;
+
+    app.world_mut()
+        .get_mut::<ThirdPersonCameraInput>(camera)
+        .unwrap()
+        .aim = true;
+    app.update();
+
+    let aim_y = app
+        .world()
+        .get::<ThirdPersonCameraRuntime>(camera)
+        .unwrap()
+        .look_target
+        .y;
+    assert!(
+        aim_y < baseline_y - 0.3,
+        "aim look target ({aim_y}) should be lower than baseline ({baseline_y}) by at least 0.3",
+    );
 }

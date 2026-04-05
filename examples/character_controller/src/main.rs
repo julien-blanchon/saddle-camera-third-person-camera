@@ -1,12 +1,12 @@
 use avian3d::prelude::*;
 use bevy::{prelude::*, transform::TransformSystems, window::WindowPlugin};
 use bevy_enhanced_input::prelude::{
-    actions, bindings, Action, Axial, Bindings, Cardinal, DeadZone,
+    Action, Axial, Bindings, Cardinal, DeadZone, actions, bindings,
 };
 use saddle_camera_third_person_camera::{
-    default_input_bindings, ShoulderSide, ThirdPersonCamera, ThirdPersonCameraIgnoreTarget,
-    ThirdPersonCameraMode, ThirdPersonCameraPlugin, ThirdPersonCameraRuntime,
-    ThirdPersonCameraSettings, ThirdPersonCameraSystems, ThirdPersonCameraTarget,
+    ShoulderSide, ThirdPersonCamera, ThirdPersonCameraIgnoreTarget, ThirdPersonCameraMode,
+    ThirdPersonCameraPlugin, ThirdPersonCameraRuntime, ThirdPersonCameraSettings,
+    ThirdPersonCameraSystems, ThirdPersonCameraTarget, default_input_bindings,
 };
 use saddle_camera_third_person_camera_example_common as common;
 use saddle_character_controller::{
@@ -247,6 +247,7 @@ fn spawn_camera(commands: &mut Commands, player: Entity) -> Entity {
     settings.lock_on.enabled = true;
     settings.lock_on.max_distance = 34.0;
     settings.framing.shoulder_height = 1.45;
+    settings.framing.aim_height_offset = -0.35;
 
     let camera = ThirdPersonCamera::looking_at(Vec3::new(0.0, 1.35, 0.0), Vec3::new(0.8, 2.7, 5.6))
         .with_mode(ThirdPersonCameraMode::Shoulder)

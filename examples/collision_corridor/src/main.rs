@@ -29,7 +29,10 @@ fn setup(
         &mut meshes,
         &mut materials,
         "collision_corridor",
-        "The target moves through pillars, door frames, and a low beam.\nWatch the camera pull in and spring back instead of clipping.",
+        "The target moves through pillars, door frames, and a low beam.\n\
+         Watch the camera pull in and spring back instead of clipping.\n\
+         Right mouse: aim | C: swap shoulder | Mouse: orbit | Scroll: zoom\n\
+         R: recenter | Q: toggle cursor lock",
         Color::srgb(0.70, 0.52, 0.17),
     );
     common::spawn_box_obstacle(
@@ -40,6 +43,34 @@ fn setup(
         Vec3::new(0.0, 2.3, -0.3),
         Vec3::new(2.8, 1.0, 0.45),
         Color::srgb(0.72, 0.43, 0.16),
+    );
+    // Extra narrow doorway to demonstrate tight-space collision
+    common::spawn_box_obstacle(
+        &mut commands,
+        &mut meshes,
+        &mut materials,
+        "Narrow Doorway Left",
+        Vec3::new(-1.1, 1.4, -8.0),
+        Vec3::new(0.35, 2.8, 0.6),
+        Color::srgb(0.52, 0.36, 0.20),
+    );
+    common::spawn_box_obstacle(
+        &mut commands,
+        &mut meshes,
+        &mut materials,
+        "Narrow Doorway Right",
+        Vec3::new(1.1, 1.4, -8.0),
+        Vec3::new(0.35, 2.8, 0.6),
+        Color::srgb(0.52, 0.36, 0.20),
+    );
+    common::spawn_box_obstacle(
+        &mut commands,
+        &mut meshes,
+        &mut materials,
+        "Narrow Doorway Lintel",
+        Vec3::new(0.0, 2.5, -8.0),
+        Vec3::new(2.6, 0.35, 0.6),
+        Color::srgb(0.52, 0.36, 0.20),
     );
     let target = common::spawn_target(
         &mut commands,
@@ -58,10 +89,15 @@ fn setup(
         &mut commands,
         "Collision Corridor Camera",
         target,
-        Vec3::new(0.0, 2.4, 7.0),
+        Vec3::new(0.0, 2.0, 7.0),
         Vec3::new(0.0, 1.5, 0.0),
         ThirdPersonCamera::default(),
         ThirdPersonCameraSettings {
+            framing: saddle_camera_third_person_camera::FramingSettings {
+                shoulder_height: 0.55,
+                aim_height_offset: -0.25,
+                ..default()
+            },
             collision: CollisionSettings {
                 strategy: CollisionStrategy::SphereProbe,
                 probe_radius: 0.38,

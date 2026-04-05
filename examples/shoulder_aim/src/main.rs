@@ -28,7 +28,10 @@ fn setup(
         &mut meshes,
         &mut materials,
         "shoulder_aim",
-        "Right mouse or LT: aim. C or d-pad right: swap shoulder.\nThe corridor is intentionally tight to show left/right parity.",
+        "Right mouse or LT: aim | C or d-pad right: swap shoulder\n\
+         Tab or LB: hold for shoulder view | 1/2: center/shoulder mode\n\
+         Mouse or right stick: orbit | Scroll or d-pad up/down: zoom\n\
+         R: recenter | Q: toggle cursor lock",
         Color::srgb(0.23, 0.63, 0.58),
     );
     let target = common::spawn_target(
@@ -44,16 +47,24 @@ fn setup(
             speed: 0.42,
         },
     );
+    // shoulder_height is tuned for capsule-centered targets (origin at capsule
+    // midpoint ~1.1 above ground).  The default 1.35 is designed for
+    // foot-anchored characters so we lower it here.
     common::spawn_camera(
         &mut commands,
         "Shoulder Aim Camera",
         target,
-        Vec3::new(0.6, 2.3, 6.0),
+        Vec3::new(0.6, 2.0, 6.0),
         Vec3::new(0.0, 1.5, 0.0),
         ThirdPersonCamera::default()
             .with_mode(ThirdPersonCameraMode::Shoulder)
             .with_shoulder_side(ShoulderSide::Right),
         ThirdPersonCameraSettings {
+            framing: saddle_camera_third_person_camera::FramingSettings {
+                shoulder_height: 0.55,
+                aim_height_offset: -0.25,
+                ..default()
+            },
             auto_recenter: saddle_camera_third_person_camera::AutoRecenterSettings {
                 enabled: true,
                 ..default()

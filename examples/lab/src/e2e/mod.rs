@@ -1,11 +1,11 @@
 use bevy::prelude::*;
 use bevy_enhanced_input::prelude::EnhancedInputSystems;
 use saddle_bevy_e2e::{
+    E2EPlugin, E2ESet,
     action::Action,
     actions::{assertions, inspect},
     init_scenario,
     scenario::Scenario,
-    E2EPlugin, E2ESet,
 };
 use saddle_camera_third_person_camera::{
     ThirdPersonCamera, ThirdPersonCameraLockOn, ThirdPersonCameraRuntime, ThirdPersonCameraTarget,

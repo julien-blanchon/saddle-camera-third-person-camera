@@ -34,7 +34,10 @@ fn setup(
         &mut meshes,
         &mut materials,
         "physics_target",
-        "This target is updated in PostUpdate before ThirdPersonCameraSystems::UpdateIntent.\nUse the same ordering when a physics backend writes transforms late in the frame.",
+        "This target is updated in PostUpdate before UpdateIntent.\n\
+         Use the same ordering when a physics backend writes transforms late.\n\
+         Mouse: orbit | Scroll: zoom | Right mouse: aim | C: shoulder swap\n\
+         R: recenter | Q: toggle cursor lock",
         Color::srgb(0.74, 0.32, 0.26),
     );
     let target = common::spawn_target(
@@ -59,10 +62,16 @@ fn setup(
         &mut commands,
         "Physics Friendly Camera",
         target,
-        Vec3::new(0.0, 2.6, 7.5),
+        Vec3::new(0.0, 2.0, 7.5),
         Vec3::new(0.0, 1.4, 0.0),
         ThirdPersonCamera::default(),
-        saddle_camera_third_person_camera::ThirdPersonCameraSettings::default(),
+        saddle_camera_third_person_camera::ThirdPersonCameraSettings {
+            framing: saddle_camera_third_person_camera::FramingSettings {
+                shoulder_height: 0.55,
+                ..default()
+            },
+            ..default()
+        },
         true,
     );
 }

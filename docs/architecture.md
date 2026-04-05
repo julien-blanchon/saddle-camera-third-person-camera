@@ -10,7 +10,7 @@ The crate uses a logical rig rather than a hierarchy of child entities:
 4. desired camera point
 5. corrected camera point
 
-`ThirdPersonCameraTarget` resolves the followed entity and an optional target-local offset. The runtime then raises that position by `framing.shoulder_height + framing.target_radius_clearance + camera.large_target_radius` to produce the look anchor. Center mode keeps the look anchor centered. Shoulder and aim modes add a yaw-relative right offset before computing the camera boom.
+`ThirdPersonCameraTarget` resolves the followed entity and an optional target-local offset. The runtime then raises that position by `framing.shoulder_height + framing.target_radius_clearance + camera.large_target_radius` to produce the look anchor. Center mode keeps the look anchor centered. Shoulder and aim modes add a yaw-relative right offset before computing the camera boom. Aim mode additionally applies `aim_height_offset` to lower the look anchor toward the true shoulder level, blended by the runtime aim blend.
 
 The camera stores both current and target state:
 

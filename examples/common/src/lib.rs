@@ -1,9 +1,9 @@
 use bevy::prelude::*;
 use saddle_camera_third_person_camera::{
-    default_input_bindings, ThirdPersonCamera, ThirdPersonCameraDebug,
-    ThirdPersonCameraInputTarget, ThirdPersonCameraLockOn, ThirdPersonCameraLockOnTarget,
-    ThirdPersonCameraObstacle, ThirdPersonCameraRuntime, ThirdPersonCameraSettings,
-    ThirdPersonCameraTarget,
+    ThirdPersonCamera, ThirdPersonCameraDebug, ThirdPersonCameraInputTarget,
+    ThirdPersonCameraLockOn, ThirdPersonCameraLockOnTarget, ThirdPersonCameraObstacle,
+    ThirdPersonCameraRuntime, ThirdPersonCameraSettings, ThirdPersonCameraTarget,
+    default_input_bindings,
 };
 use saddle_pane::prelude::*;
 
@@ -47,6 +47,12 @@ pub struct ThirdPersonPane {
     pub default_distance: f32,
     #[pane(tab = "Framing", slider, min = 0.0, max = 2.0, step = 0.05)]
     pub shoulder_offset: f32,
+    #[pane(tab = "Framing", slider, min = 0.0, max = 3.0, step = 0.05)]
+    pub shoulder_height: f32,
+    #[pane(tab = "Framing", slider, min = -1.5, max = 0.5, step = 0.05)]
+    pub aim_height_offset: f32,
+    #[pane(tab = "Framing", slider, min = 0.0, max = 1.0, step = 0.05)]
+    pub target_radius_clearance: f32,
     #[pane(tab = "Framing")]
     pub screen_framing_enabled: bool,
     #[pane(tab = "Framing", slider, min = 0.0, max = 0.8, step = 0.01)]
@@ -66,6 +72,10 @@ pub struct ThirdPersonPane {
     #[pane(tab = "Runtime", monitor)]
     pub obstruction_active: bool,
     #[pane(tab = "Runtime", monitor)]
+    pub aim_blend: f32,
+    #[pane(tab = "Runtime", monitor)]
+    pub shoulder_blend: f32,
+    #[pane(tab = "Runtime", monitor)]
     pub lock_target: String,
 }
 
@@ -77,6 +87,9 @@ impl Default for ThirdPersonPane {
             pitch_speed: settings.orbit.pitch_speed,
             default_distance: settings.zoom.default_distance,
             shoulder_offset: settings.framing.shoulder_offset,
+            shoulder_height: settings.framing.shoulder_height,
+            aim_height_offset: settings.framing.aim_height_offset,
+            target_radius_clearance: settings.framing.target_radius_clearance,
             screen_framing_enabled: settings.screen_framing.enabled,
             dead_zone_x: settings.screen_framing.dead_zone.x,
             dead_zone_y: settings.screen_framing.dead_zone.y,
@@ -86,6 +99,8 @@ impl Default for ThirdPersonPane {
             lock_on_max_distance: settings.lock_on.max_distance,
             obstruction_distance: 0.0,
             obstruction_active: false,
+            aim_blend: 0.0,
+            shoulder_blend: 0.0,
             lock_target: "None".into(),
         }
     }
@@ -354,6 +369,9 @@ fn sync_pane_to_camera(
         pane.pitch_speed = settings.orbit.pitch_speed;
         pane.default_distance = settings.zoom.default_distance;
         pane.shoulder_offset = settings.framing.shoulder_offset;
+        pane.shoulder_height = settings.framing.shoulder_height;
+        pane.aim_height_offset = settings.framing.aim_height_offset;
+        pane.target_radius_clearance = settings.framing.target_radius_clearance;
         pane.screen_framing_enabled = settings.screen_framing.enabled;
         pane.dead_zone_x = settings.screen_framing.dead_zone.x;
         pane.dead_zone_y = settings.screen_framing.dead_zone.y;
@@ -368,6 +386,9 @@ fn sync_pane_to_camera(
         settings.orbit.pitch_speed = pane.pitch_speed;
         settings.zoom.default_distance = pane.default_distance;
         settings.framing.shoulder_offset = pane.shoulder_offset;
+        settings.framing.shoulder_height = pane.shoulder_height;
+        settings.framing.aim_height_offset = pane.aim_height_offset;
+        settings.framing.target_radius_clearance = pane.target_radius_clearance;
         settings.screen_framing.enabled = pane.screen_framing_enabled;
         settings.screen_framing.dead_zone = Vec2::new(pane.dead_zone_x, pane.dead_zone_y);
         settings.screen_framing.soft_zone = Vec2::new(
@@ -382,6 +403,8 @@ fn sync_pane_to_camera(
     let pane = pane.bypass_change_detection();
     pane.obstruction_distance = runtime.obstruction_distance;
     pane.obstruction_active = runtime.obstruction_active;
+    pane.aim_blend = runtime.aim_blend;
+    pane.shoulder_blend = runtime.shoulder_blend;
     pane.lock_target = lock_on
         .active_target
         .map(|entity| format!("{}", entity.to_bits()))

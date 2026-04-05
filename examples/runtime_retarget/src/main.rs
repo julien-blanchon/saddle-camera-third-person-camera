@@ -33,7 +33,9 @@ fn setup(
         &mut meshes,
         &mut materials,
         "runtime_retarget",
-        "The camera switches between three moving targets every three seconds.\nThis example exercises the stable public API for runtime target changes.",
+        "The camera switches between three targets every three seconds.\n\
+         Mouse: orbit | Scroll: zoom | Right mouse: aim | C: shoulder swap\n\
+         R: recenter | Q: toggle cursor lock",
         Color::srgb(0.22, 0.68, 0.46),
     );
 
@@ -85,10 +87,16 @@ fn setup(
         &mut commands,
         "Retarget Camera",
         targets[0],
-        Vec3::new(0.0, 2.6, 8.0),
+        Vec3::new(0.0, 2.0, 8.0),
         Vec3::new(0.0, 1.4, 0.0),
         ThirdPersonCamera::default(),
-        saddle_camera_third_person_camera::ThirdPersonCameraSettings::default(),
+        saddle_camera_third_person_camera::ThirdPersonCameraSettings {
+            framing: saddle_camera_third_person_camera::FramingSettings {
+                shoulder_height: 0.55,
+                ..default()
+            },
+            ..default()
+        },
         true,
     );
 

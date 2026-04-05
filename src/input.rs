@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use bevy_enhanced_input::prelude::{
-    actions, bindings, Action, Axial, Bidirectional, Binding, Bindings, Cancel as InputCancel,
-    Complete, DeadZone, Fire, InputAction, Press, Scale, Start,
+    Action, Axial, Bidirectional, Binding, Bindings, Cancel as InputCancel, Complete, DeadZone,
+    Fire, InputAction, Press, Scale, Start, actions, bindings,
 };
 use bevy_enhanced_input::preset::WithBundle;
 

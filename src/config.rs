@@ -129,6 +129,7 @@ pub struct FramingSettings {
     pub aim_enabled: bool,
     pub aim_distance_scale: f32,
     pub aim_pitch_offset: f32,
+    pub aim_height_offset: f32,
     pub target_radius_clearance: f32,
 }
 
@@ -141,7 +142,8 @@ impl Default for FramingSettings {
             aim_enabled: true,
             aim_distance_scale: 0.62,
             aim_pitch_offset: 0.10,
-            target_radius_clearance: 0.55,
+            aim_height_offset: -0.35,
+            target_radius_clearance: 0.15,
         }
     }
 }

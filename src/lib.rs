@@ -18,15 +18,15 @@ pub use config::{
     ZoomSettings,
 };
 pub use input::{
-    default_input_bindings, AimAction, CursorLockAction, ForceCenterModeAction,
-    ForceShoulderModeAction, NextLockOnTargetAction, OrbitAction, PreviousLockOnTargetAction,
-    RecenterAction, ShoulderHoldAction, ThirdPersonCameraInputContext, ToggleLockOnAction,
-    ToggleShoulderAction, ZoomAction,
+    AimAction, CursorLockAction, ForceCenterModeAction, ForceShoulderModeAction,
+    NextLockOnTargetAction, OrbitAction, PreviousLockOnTargetAction, RecenterAction,
+    ShoulderHoldAction, ThirdPersonCameraInputContext, ToggleLockOnAction, ToggleShoulderAction,
+    ZoomAction, default_input_bindings,
 };
 pub use math::{
-    camera_pose_from_look_target, forward_from_angles, segment_aabb_hit, shortest_angle_delta,
-    smooth_angle, smooth_factor, smooth_scalar, smooth_vec3, wrap_angle, yaw_from_direction,
-    yaw_pitch_rotation, CameraPose, SegmentHit,
+    CameraPose, SegmentHit, camera_pose_from_look_target, forward_from_angles, segment_aabb_hit,
+    shortest_angle_delta, smooth_angle, smooth_factor, smooth_scalar, smooth_vec3, wrap_angle,
+    yaw_from_direction, yaw_pitch_rotation,
 };
 
 use crate::systems::ActiveInputCamera;
@@ -37,7 +37,7 @@ use bevy::{
     prelude::*,
     transform::TransformSystems,
 };
-use bevy_enhanced_input::{context::InputContextAppExt, EnhancedInputPlugin, EnhancedInputSystems};
+use bevy_enhanced_input::{EnhancedInputPlugin, EnhancedInputSystems, context::InputContextAppExt};
 
 #[derive(SystemSet, Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub enum ThirdPersonCameraSystems {

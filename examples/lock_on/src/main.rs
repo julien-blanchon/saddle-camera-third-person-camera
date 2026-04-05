@@ -28,7 +28,10 @@ fn setup(
         &mut meshes,
         &mut materials,
         "lock_on",
-        "F toggles lock-on. E selects the next target. Z selects the previous target.\nThe soft zone keeps the player framed while the focus shifts between threats.",
+        "F: toggle lock-on | E: next target | Z: previous target\n\
+         Right mouse: aim | C: swap shoulder | Mouse: orbit | Scroll: zoom\n\
+         R: recenter | Q: toggle cursor lock\n\
+         The soft zone keeps the player framed while the focus shifts between threats.",
         Color::srgb(0.84, 0.32, 0.20),
     );
 
@@ -86,10 +89,15 @@ fn setup(
         &mut commands,
         "Lock On Camera",
         player,
-        Vec3::new(0.0, 2.6, 7.2),
+        Vec3::new(0.0, 2.0, 7.2),
         Vec3::new(0.0, 1.5, 0.0),
         ThirdPersonCamera::default(),
         ThirdPersonCameraSettings {
+            framing: saddle_camera_third_person_camera::FramingSettings {
+                shoulder_height: 0.55,
+                aim_height_offset: -0.25,
+                ..default()
+            },
             lock_on: LockOnSettings {
                 enabled: true,
                 max_distance: 22.0,

@@ -93,7 +93,8 @@ All smoothing values are exponential response rates. Higher numbers settle faste
 | `aim_enabled` | `bool` | `true` | `true` or `false` | Allows `Aim` mode and aim-distance scaling |
 | `aim_distance_scale` | `f32` | `0.62` | `(0.0, 1.0]` recommended | Multiplies camera distance while in aim mode |
 | `aim_pitch_offset` | `f32` | `0.10` | Any finite value | Additional pitch applied in aim mode |
-| `target_radius_clearance` | `f32` | `0.55` | `>= 0.0` | Extra look-anchor lift that helps large targets avoid near-clip face shots |
+| `aim_height_offset` | `f32` | `-0.35` | Any finite value | Vertical offset applied to the look anchor in aim mode, blended by aim blend. Negative values pull the pivot down toward true shoulder level |
+| `target_radius_clearance` | `f32` | `0.15` | `>= 0.0` | Extra look-anchor lift that helps large targets avoid near-clip face shots |
 
 ## Screen Framing
 
@@ -102,8 +103,8 @@ All smoothing values are exponential response rates. Higher numbers settle faste
 | Field | Type | Default | Valid Range | Behavior |
 | --- | --- | --- | --- | --- |
 | `enabled` | `bool` | `false` | `true` or `false` | Enables screen-space framing rather than pure world-space follow |
-| `dead_zone` | `Vec2` | `(0.12, 0.10)` | `0.0..1.0` per axis | Region where the target can move without camera response |
-| `soft_zone` | `Vec2` | `(0.55, 0.48)` | Larger than `dead_zone`, typically `< 1.0` | Region where the camera eases back toward the target before hard follow |
+| `dead_zone` | `Vec2` | `(0.18, 0.14)` | `0.0..1.0` per axis | Region where the target can move without camera response |
+| `soft_zone` | `Vec2` | `(0.42, 0.32)` | Larger than `dead_zone`, typically `< 1.0` | Region where the camera eases back toward the target before hard follow |
 | `screen_offset` | `Vec2` | `(0.0, 0.0)` | roughly `-0.5..0.5` | Biases the target anchor away from exact screen center |
 
 Dead zone and soft zone are normalized viewport fractions. A larger soft zone slows visible recentering, while a smaller dead zone makes the camera feel tighter and more responsive.
@@ -116,7 +117,7 @@ Dead zone and soft zone are normalized viewport fractions. A larger soft zone sl
 | --- | --- | --- | --- | --- |
 | `enabled` | `bool` | `false` | `true` or `false` | Enables lock-on selection and runtime facing behavior |
 | `max_distance` | `f32` | `24.0` | `> 0.0` | Maximum distance from the camera pivot to candidate targets |
-| `focus_bias` | `f32` | `0.72` | `0.0..1.0` | Biases candidate selection toward targets already near the view center |
+| `focus_bias` | `f32` | `0.35` | `0.0..1.0` | Biases the look-target blend between the player pivot and the lock-on target |
 | `pitch_offset` | `f32` | `0.08` | Any finite value | Offsets pitch while lock-on is active to keep both combatants framed |
 
 Candidate targets must carry `ThirdPersonCameraLockOnTarget`.
@@ -190,7 +191,7 @@ Candidate targets must carry `ThirdPersonCameraLockOnTarget`.
 | Field | Type | Default | Valid Range | Behavior |
 | --- | --- | --- | --- | --- |
 | `offset` | `Vec3` | `Vec3::ZERO` | Any finite vector | Additional target-local offset used for the lock-on anchor |
-| `priority` | `f32` | `1.0` | `>= 0.0` | Weight applied during candidate ranking and cycling |
+| `priority` | `f32` | `0.0` | `>= 0.0` | Weight applied during candidate ranking and cycling |
 
 ## Target Descriptor
 
@@ -248,6 +249,7 @@ let settings = ThirdPersonCameraSettings {
     framing: FramingSettings {
         shoulder_offset: 0.68,
         shoulder_height: 1.35,
+        aim_height_offset: -0.35,
         aim_distance_scale: 0.7,
         ..default()
     },
@@ -276,6 +278,7 @@ let settings = ThirdPersonCameraSettings {
         shoulder_offset: 0.95,
         aim_distance_scale: 0.48,
         aim_pitch_offset: 0.06,
+        aim_height_offset: -0.40,
         ..default()
     },
     smoothing: SmoothingSettings {
@@ -341,6 +344,8 @@ let settings = ThirdPersonCameraSettings {
 ## Tuning Advice
 
 - Start by choosing the right `default_distance`, `shoulder_height`, and `target_radius_clearance`. Most bad third-person framing comes from those three values.
+- `shoulder_height` is offset from the target entity's transform origin. For characters with transforms at their feet, 1.35 is a good starting point. For capsule-centered targets (origin at capsule midpoint), use a lower value like 0.55.
+- If aim mode looks too high, make `aim_height_offset` more negative to pull the camera pivot down to true shoulder level.
 - If the camera feels sticky, raise `orientation_smoothing` or `target_follow_smoothing`.
 - If corner collisions feel twitchy, keep `MultiRay`, increase `probe_radius`, and lower `obstruction_release`.
 - If aim mode feels too invasive, raise `aim_distance_scale` closer to `1.0` and reduce `aim_pitch_offset`.

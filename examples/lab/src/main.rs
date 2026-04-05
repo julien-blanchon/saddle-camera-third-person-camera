@@ -8,9 +8,9 @@ use bevy_brp_extras::BrpExtrasPlugin;
 #[cfg(feature = "e2e")]
 use saddle_bevy_e2e::E2ESet;
 use saddle_camera_third_person_camera::{
-    CollisionSettings, CollisionStrategy, LockOnSettings, ThirdPersonCamera,
-    ThirdPersonCameraMode, ThirdPersonCameraPlugin, ThirdPersonCameraRuntime,
-    ThirdPersonCameraSettings, ThirdPersonCameraSystems, ThirdPersonCameraTarget,
+    CollisionSettings, CollisionStrategy, LockOnSettings, ThirdPersonCamera, ThirdPersonCameraMode,
+    ThirdPersonCameraPlugin, ThirdPersonCameraRuntime, ThirdPersonCameraSettings,
+    ThirdPersonCameraSystems, ThirdPersonCameraTarget,
 };
 
 #[derive(Resource, Clone, Copy)]
@@ -126,10 +126,15 @@ fn setup(
         &mut commands,
         "Lab Third Person Camera",
         primary,
-        Vec3::new(0.6, 2.5, 7.2),
+        Vec3::new(0.6, 2.0, 7.2),
         Vec3::new(0.0, 1.5, 0.0),
         ThirdPersonCamera::default().with_mode(ThirdPersonCameraMode::Shoulder),
         ThirdPersonCameraSettings {
+            framing: saddle_camera_third_person_camera::FramingSettings {
+                shoulder_height: 0.55,
+                aim_height_offset: -0.25,
+                ..default()
+            },
             collision: CollisionSettings {
                 strategy: CollisionStrategy::SphereProbe,
                 probe_radius: 0.38,
