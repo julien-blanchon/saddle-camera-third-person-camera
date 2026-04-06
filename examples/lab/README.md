@@ -1,10 +1,10 @@
 # `saddle-camera-third-person-camera-lab`
 
-Crate-local BRP and E2E verification harness for `saddle-camera-third-person-camera`.
+Crate-local BRP and E2E verification harness for the generic camera core plus the optional action adapters.
 
 ## Purpose
 
-- richer scene for obstruction, shoulder parity, and retargeting checks
+- richer scene for obstruction, shoulder parity, lock-on, and retargeting checks
 - reproducible E2E scenarios for the shared crate
 - BRP-friendly runtime inspection without using project sandboxes
 - interactive local controls for retargeting and cursor-lock debugging

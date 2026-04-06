@@ -1,9 +1,11 @@
 use bevy::prelude::*;
 use saddle_camera_third_person_camera::{
-    ThirdPersonCamera, ThirdPersonCameraDebug, ThirdPersonCameraInputTarget,
-    ThirdPersonCameraLockOn, ThirdPersonCameraLockOnTarget, ThirdPersonCameraObstacle,
-    ThirdPersonCameraRuntime, ThirdPersonCameraSettings, ThirdPersonCameraTarget,
-    default_input_bindings,
+    ThirdPersonCamera, ThirdPersonCameraCursorController, ThirdPersonCameraDebug,
+    ThirdPersonCameraEnhancedInputTarget, ThirdPersonCameraLockOn,
+    ThirdPersonCameraLockOnRuntime, ThirdPersonCameraLockOnSettings,
+    ThirdPersonCameraLockOnTarget, ThirdPersonCameraObstacle, ThirdPersonCameraRuntime,
+    ThirdPersonCameraSettings, ThirdPersonCameraShoulderRig, ThirdPersonCameraShoulderRuntime,
+    ThirdPersonCameraShoulderSettings, ThirdPersonCameraTarget, default_input_bindings,
 };
 use saddle_pane::prelude::*;
 
@@ -48,7 +50,7 @@ pub struct ThirdPersonPane {
     #[pane(tab = "Framing", slider, min = 0.0, max = 2.0, step = 0.05)]
     pub shoulder_offset: f32,
     #[pane(tab = "Framing", slider, min = 0.0, max = 3.0, step = 0.05)]
-    pub shoulder_height: f32,
+    pub anchor_height: f32,
     #[pane(tab = "Framing", slider, min = -1.5, max = 0.5, step = 0.05)]
     pub aim_height_offset: f32,
     #[pane(tab = "Framing", slider, min = 0.0, max = 1.0, step = 0.05)]
@@ -82,21 +84,23 @@ pub struct ThirdPersonPane {
 impl Default for ThirdPersonPane {
     fn default() -> Self {
         let settings = ThirdPersonCameraSettings::default();
+        let shoulder = ThirdPersonCameraShoulderSettings::default();
+        let lock_on = ThirdPersonCameraLockOnSettings::default();
         Self {
             yaw_speed: settings.orbit.yaw_speed,
             pitch_speed: settings.orbit.pitch_speed,
             default_distance: settings.zoom.default_distance,
-            shoulder_offset: settings.framing.shoulder_offset,
-            shoulder_height: settings.framing.shoulder_height,
-            aim_height_offset: settings.framing.aim_height_offset,
-            target_radius_clearance: settings.framing.target_radius_clearance,
+            shoulder_offset: shoulder.shoulder_offset,
+            anchor_height: settings.anchor.height,
+            aim_height_offset: shoulder.aim_height_offset,
+            target_radius_clearance: settings.anchor.radius_clearance,
             screen_framing_enabled: settings.screen_framing.enabled,
             dead_zone_x: settings.screen_framing.dead_zone.x,
             dead_zone_y: settings.screen_framing.dead_zone.y,
             soft_zone_x: settings.screen_framing.soft_zone.x,
             soft_zone_y: settings.screen_framing.soft_zone.y,
-            lock_on_enabled: settings.lock_on.enabled,
-            lock_on_max_distance: settings.lock_on.max_distance,
+            lock_on_enabled: lock_on.enabled,
+            lock_on_max_distance: lock_on.max_distance,
             obstruction_distance: 0.0,
             obstruction_active: false,
             aim_blend: 0.0,
@@ -294,8 +298,11 @@ pub fn spawn_camera(
         Transform::from_translation(eye).looking_at(look_at, Vec3::Y),
         camera,
         settings,
+        ThirdPersonCameraShoulderRig::default(),
+        ThirdPersonCameraLockOn::default(),
+        ThirdPersonCameraCursorController::default(),
         ThirdPersonCameraTarget::new(target),
-        ThirdPersonCameraInputTarget,
+        ThirdPersonCameraEnhancedInputTarget,
         default_input_bindings(),
     ));
     if debug {
@@ -352,13 +359,25 @@ fn sync_pane_to_camera(
         (
             &mut ThirdPersonCamera,
             &mut ThirdPersonCameraSettings,
+            Option<&mut ThirdPersonCameraShoulderSettings>,
+            Option<&ThirdPersonCameraShoulderRuntime>,
+            Option<&mut ThirdPersonCameraLockOnSettings>,
+            Option<&ThirdPersonCameraLockOnRuntime>,
             &ThirdPersonCameraRuntime,
-            &ThirdPersonCameraLockOn,
         ),
         With<ThirdPersonCamera>,
     >,
 ) {
-    let Some((mut camera, mut settings, runtime, lock_on)) = cameras.iter_mut().next() else {
+    let Some((
+        mut camera,
+        mut settings,
+        mut shoulder_settings,
+        shoulder_runtime,
+        mut lock_on_settings,
+        lock_on_runtime,
+        runtime,
+    )) = cameras.iter_mut().next()
+    else {
         return;
     };
     let pane_added = pane.is_added();
@@ -368,45 +387,53 @@ fn sync_pane_to_camera(
         pane.yaw_speed = settings.orbit.yaw_speed;
         pane.pitch_speed = settings.orbit.pitch_speed;
         pane.default_distance = settings.zoom.default_distance;
-        pane.shoulder_offset = settings.framing.shoulder_offset;
-        pane.shoulder_height = settings.framing.shoulder_height;
-        pane.aim_height_offset = settings.framing.aim_height_offset;
-        pane.target_radius_clearance = settings.framing.target_radius_clearance;
+        pane.anchor_height = settings.anchor.height;
+        pane.target_radius_clearance = settings.anchor.radius_clearance;
         pane.screen_framing_enabled = settings.screen_framing.enabled;
         pane.dead_zone_x = settings.screen_framing.dead_zone.x;
         pane.dead_zone_y = settings.screen_framing.dead_zone.y;
         pane.soft_zone_x = settings.screen_framing.soft_zone.x;
         pane.soft_zone_y = settings.screen_framing.soft_zone.y;
-        pane.lock_on_enabled = settings.lock_on.enabled;
-        pane.lock_on_max_distance = settings.lock_on.max_distance;
+        if let Some(shoulder_settings) = shoulder_settings.as_deref() {
+            pane.shoulder_offset = shoulder_settings.shoulder_offset;
+            pane.aim_height_offset = shoulder_settings.aim_height_offset;
+        }
+        if let Some(lock_on_settings) = lock_on_settings.as_deref() {
+            pane.lock_on_enabled = lock_on_settings.enabled;
+            pane.lock_on_max_distance = lock_on_settings.max_distance;
+        }
     }
 
     if pane.is_changed() && !pane_added {
         settings.orbit.yaw_speed = pane.yaw_speed;
         settings.orbit.pitch_speed = pane.pitch_speed;
         settings.zoom.default_distance = pane.default_distance;
-        settings.framing.shoulder_offset = pane.shoulder_offset;
-        settings.framing.shoulder_height = pane.shoulder_height;
-        settings.framing.aim_height_offset = pane.aim_height_offset;
-        settings.framing.target_radius_clearance = pane.target_radius_clearance;
+        settings.anchor.height = pane.anchor_height;
+        settings.anchor.radius_clearance = pane.target_radius_clearance;
         settings.screen_framing.enabled = pane.screen_framing_enabled;
         settings.screen_framing.dead_zone = Vec2::new(pane.dead_zone_x, pane.dead_zone_y);
         settings.screen_framing.soft_zone = Vec2::new(
             pane.soft_zone_x.max(pane.dead_zone_x),
             pane.soft_zone_y.max(pane.dead_zone_y),
         );
-        settings.lock_on.enabled = pane.lock_on_enabled;
-        settings.lock_on.max_distance = pane.lock_on_max_distance;
+        if let Some(shoulder_settings) = shoulder_settings.as_deref_mut() {
+            shoulder_settings.shoulder_offset = pane.shoulder_offset;
+            shoulder_settings.aim_height_offset = pane.aim_height_offset;
+        }
+        if let Some(lock_on_settings) = lock_on_settings.as_deref_mut() {
+            lock_on_settings.enabled = pane.lock_on_enabled;
+            lock_on_settings.max_distance = pane.lock_on_max_distance;
+        }
         camera.target_distance = pane.default_distance;
     }
 
     let pane = pane.bypass_change_detection();
     pane.obstruction_distance = runtime.obstruction_distance;
     pane.obstruction_active = runtime.obstruction_active;
-    pane.aim_blend = runtime.aim_blend;
-    pane.shoulder_blend = runtime.shoulder_blend;
-    pane.lock_target = lock_on
-        .active_target
+    pane.aim_blend = shoulder_runtime.map_or(0.0, |runtime| runtime.aim_blend);
+    pane.shoulder_blend = shoulder_runtime.map_or(0.0, |runtime| runtime.shoulder_blend);
+    pane.lock_target = lock_on_runtime
+        .and_then(|runtime| runtime.active_target)
         .map(|entity| format!("{}", entity.to_bits()))
         .unwrap_or_else(|| "None".into());
 }

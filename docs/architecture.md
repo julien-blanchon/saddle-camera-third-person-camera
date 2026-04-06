@@ -1,135 +1,142 @@
 # Architecture
 
+## Design Split
+
+The crate is organized as a generic camera core plus optional adapters.
+
+### Core Rig
+
+The core runtime owns:
+
+1. follow target sampling
+2. anchor height and screen-space framing
+3. orbit yaw and pitch
+4. zoom distance
+5. desired vs corrected camera pose
+6. collision pull-in and release smoothing
+
+The core surface is intentionally small:
+
+- `ThirdPersonCamera`
+- `ThirdPersonCameraSettings`
+- `ThirdPersonCameraTarget`
+- `ThirdPersonCameraInput`
+- `ThirdPersonCameraRuntime`
+
+### Optional Adapters
+
+Adapters layer archetype-specific behavior on top of the core rig:
+
+- `ThirdPersonCameraShoulderRig` and `ThirdPersonCameraShoulderSettings`
+  Adds lateral shoulder framing, aim distance scaling, and aim pitch or height offsets.
+- `ThirdPersonCameraLockOn` and `ThirdPersonCameraLockOnSettings`
+  Adds target acquisition, target cycling, and look-target bias toward a tracked entity.
+- `ThirdPersonCameraCursorController`
+  Adds cursor lock ownership for the active camera.
+- `ThirdPersonCameraEnhancedInputPlugin`
+  Bridges `bevy_enhanced_input` into the core input inbox plus the action adapter inbox.
+
+This split keeps the public default path genre-neutral while preserving the older action-camera feature set as opt-in layers.
+
 ## Rig Model
 
-The crate uses a logical rig rather than a hierarchy of child entities:
+The core rig uses a logical camera model rather than a transform child hierarchy:
 
 1. target origin
-2. look anchor
-3. shoulder offset
+2. target-local offset from `ThirdPersonCameraTarget`
+3. anchor height from `ThirdPersonCameraSettings::anchor`
 4. desired camera point
-5. corrected camera point
+5. corrected camera point after obstruction
 
-`ThirdPersonCameraTarget` resolves the followed entity and an optional target-local offset. The runtime then raises that position by `framing.shoulder_height + framing.target_radius_clearance + camera.large_target_radius` to produce the look anchor. Center mode keeps the look anchor centered. Shoulder and aim modes add a yaw-relative right offset before computing the camera boom. Aim mode additionally applies `aim_height_offset` to lower the look anchor toward the true shoulder level, blended by the runtime aim blend.
+`ThirdPersonCameraTarget` resolves the followed entity and optional target-local offset. The runtime then raises that anchor by `anchor.height + anchor.radius_clearance + camera.large_target_radius`.
 
-The camera stores both current and target state:
-
-- yaw and target yaw
-- pitch and target pitch
-- distance and target distance
-- shoulder side and target shoulder side
-- current effective mode and persistent target mode
-
-That split keeps input, recentering, and smoothing explicit rather than hidden in transform math.
-
-Temporary input overrides are layered on top of the persistent mode:
-
-- `target_mode` stays authored or gameplay-driven
-- `AimAction` temporarily drives the effective target mode to `Aim`
-- `ShoulderHoldAction` temporarily drives the effective target mode to `Shoulder`
-- releasing either input returns the camera to the persistent mode
-
-Lock-on sits beside that mode stack. When active, it does not replace the base rig; it biases the runtime look target and target yaw toward the chosen combat target while the regular shoulder, zoom, and obstruction systems continue to operate.
+Shoulder or aim framing does not live in the core anchor anymore. When the optional shoulder adapter is present, it offsets the look target laterally and adjusts pitch or distance after the core target sample is resolved.
 
 ## System Phases
 
-The runtime is intentionally broken into explicit phases:
+The runtime remains intentionally explicit:
 
 1. `ReadInput`
-   Aggregates the active `bevy_enhanced_input` context into `ThirdPersonCameraInput`. Only the highest-order active camera with `ThirdPersonCameraInputTarget` receives shared input.
+   Reserved for input adapters. The optional BEI plugin writes to `ThirdPersonCameraInput` and `ThirdPersonCameraActionInput` here.
 2. `UpdateIntent`
-   Samples the follow target, updates yaw or pitch or distance intent, applies manual or idle recentering, resolves lock-on selection, smooths pivot or orientation or zoom, and updates shoulder or aim blends.
+   Samples the follow target, applies core orbit or zoom or recenter input, updates optional lock-on state, smooths pivot or orientation or zoom, and resolves adapter state such as shoulder or aim blends.
 3. `ResolveObstruction`
    Computes the unconstrained pose, tests it against opt-in obstacles, and derives `obstruction_distance`, `corrected_distance`, hit point, and hit normal.
 4. `ApplyTransform`
-   Writes the final camera `Transform` from the corrected runtime pose, then clears transient input.
+   Writes the final `Transform` and clears transient input inboxes.
 5. `DebugDraw`
-   Draws pivot, desired boom, corrected boom, and hit state for cameras that carry `ThirdPersonCameraDebug`.
+   Draws pivot, desired boom, corrected boom, and hit state for cameras with `ThirdPersonCameraDebug`.
 
-`ReadInput` runs in the plugin's injected update schedule. The remaining phases run in `PostUpdate` so the camera can follow targets that finish authoritative motion late in the frame.
+`UpdateIntent` and the later phases run in `PostUpdate` so the camera can follow targets that finish authoritative motion late in the frame.
 
 ## Screen-Space Framing
 
-When `ScreenSpaceFramingSettings` is enabled, the runtime does not immediately drag the pivot back to the exact target anchor. Instead it evaluates the target against three regions:
+When `ScreenSpaceFramingSettings` is enabled, the core runtime evaluates the target against three regions:
 
 1. dead zone: no camera response
 2. soft zone: gentle correction
-3. outside soft zone: direct catch-up
+3. outside the soft zone: direct catch-up
 
-That framing logic is applied before obstruction resolution, so the camera still uses the same desired vs corrected pose pipeline once the pivot has been adjusted.
-
-## Ordering Guidance
-
-Typical integrations should use these rules:
-
-- If gameplay or physics updates the followed entity in `Update`, no extra ordering is needed.
-- If target motion is finalized in `PostUpdate`, schedule that system before `ThirdPersonCameraSystems::UpdateIntent`.
-- If an external system writes `ThirdPersonCameraInput` directly, do that after `ThirdPersonCameraSystems::ReadInput` or write to the active input camera entity.
-- If another system needs the final camera transform in the same frame, order it after `ThirdPersonCameraSystems::ApplyTransform` and before `TransformSystems::Propagate` only when that system also works in `PostUpdate`.
-
-The crate does not depend on any specific physics backend. The ordering seam is the public system-set surface, not a physics-specific API.
-
-## Alignment And Recentering
-
-The crate separates two yaw-reference decisions:
-
-- `ThirdPersonCameraTarget::follow_rotation` controls the manual recenter and retarget reference
-- `AutoRecenterSettings::follow_alignment` controls idle recentering after input inactivity
-
-That split lets a game keep explicit recenter behavior tied to the tracked actor while still choosing whether passive recentering follows forward, follows motion heading, or stays fully free.
-
-Lock-on adds a third reference. If the active camera has a valid `ThirdPersonCameraLockOn::active_target`, the runtime can override manual or recenter yaw targets so the camera keeps the tracked enemy framed without throwing away the authored home values.
+That logic runs before obstruction resolution, so framing and collision share the same desired-vs-corrected pose pipeline.
 
 ## Obstruction Strategy
 
 The obstruction path separates desired pose from corrected pose:
 
-- desired pose is computed from look anchor, yaw, pitch, shoulder blend, aim blend, and desired distance
-- corrected pose is derived by shortening the boom when sample rays or probe offsets hit an obstacle
+- desired pose comes from the anchor, orbit angles, optional shoulder offsets, and designer distance
+- corrected pose shortens the boom when sample rays hit an obstacle
 
 Supported strategies:
 
-- `SingleRay`: center boom only, cheapest but most likely to leak near walls
-- `MultiRay`: center plus four offset rays, default and the best general-purpose tradeoff
-- `SphereProbe`: denser offset sample set, more stable around shoulders and ceilings but more expensive
+- `SingleRay`
+- `MultiRay`
+- `SphereProbe`
 
-Obstacle policy is opt-in:
+Obstacle participation is opt-in:
 
 - only entities with `ThirdPersonCameraObstacle` participate
-- `ObstacleType::Blocker` keeps the camera farther away than `ObstacleType::Occluder`
-- explicit ignore markers and target-owned exclusions prevent self-occlusion
-- `include_shape_radius` toggles whether probe radius expands obstacle padding and sample clearance
+- `ObstacleType::Blocker` uses full probe padding
+- `ObstacleType::Occluder` uses lighter padding
+- target-owned exclusions and explicit ignore markers prevent self-occlusion
 
-When an obstacle is hit, the runtime uses `obstruction_pull_in` smoothing. When the path clears, it uses the slower `obstruction_release` smoothing to create spring-arm-style recovery.
+## Lock-On And Shoulder Adapters
 
-## Smoothing Strategy
+The action adapters are stateful but isolated from the core rig.
 
-The crate uses exponential smoothing helpers so behavior is frame-rate independent. Different concerns use different rates:
+### Shoulder Adapter
 
-- `target_follow_smoothing` for pivot motion
-- `orientation_smoothing` for yaw and pitch
-- `zoom_smoothing` for designer-facing distance changes
-- `obstruction_pull_in` and `obstruction_release` for collision response
-- `shoulder_blend` and `aim_blend` for framing transitions
+`ThirdPersonCameraShoulderRig` stores:
 
-The runtime exposes both desired and corrected positions in `ThirdPersonCameraRuntime` so shoulder jitter, obstruction oscillation, and recenter behavior can be inspected live.
+- current shoulder side and target shoulder side
+- current framing mode and persistent target mode
+- home shoulder side and home mode
 
-## Cursor And Input Ownership
+`ThirdPersonCameraShoulderRuntime` stores the smoothed shoulder and aim blends that the core obstruction stage reads when composing the final look target.
 
-The crate owns its default BEI context and cursor-lock policy. Cursor lock is only applied to the active input camera. This avoids one disabled or background camera fighting the primary view.
+### Lock-On Adapter
 
-For UI-heavy games, remove `ThirdPersonCameraInputTarget` from the active camera or disable the camera when a UI layer should own the pointer. The shared crate intentionally does not infer UI hover state.
+`ThirdPersonCameraLockOn` stores the currently requested target entity.
 
-## Runtime Debugging
+`ThirdPersonCameraLockOnRuntime` stores:
 
-`ThirdPersonCameraRuntime` is the main debugging surface:
+- the blended focus point
+- current and target lock-on blend
+- the effective active target
 
-- `pivot`, `look_target`, `desired_camera_position`, `corrected_camera_position`
-- `desired_distance`, `obstruction_distance`, `corrected_distance`
-- `obstruction_active`, `last_hit_point`, `last_hit_normal`, `last_collision_target`
-- `shoulder_blend`, `aim_blend`, `cursor_locked`
+The adapter can steer target yaw and pitch without replacing the core orbit or collision logic.
 
-The crate-local lab adds BRP and reproducible E2E scenarios so obstruction, shoulder parity, and retargeting issues can be inspected without involving project sandboxes.
+## Cursor Ownership
+
+Cursor lock is no longer a field inside `ThirdPersonCameraSettings`.
+
+If a camera has `ThirdPersonCameraCursorController`, the runtime applies its `locked` state to the active camera with the highest `Camera.order`. Cameras without the cursor adapter never touch the window cursor.
+
+## Ordering Guidance
+
+- If gameplay or physics updates the followed entity in `Update`, no extra ordering is needed.
+- If target motion is finalized in `PostUpdate`, schedule that system before `ThirdPersonCameraSystems::UpdateIntent`.
+- If you write `ThirdPersonCameraInput` yourself, do it in `Update` or in `ThirdPersonCameraSystems::ReadInput`.
+- If another system needs the final camera transform in the same frame, order it after `ThirdPersonCameraSystems::ApplyTransform`.
 
 ## Performance Notes
 
@@ -138,16 +145,11 @@ Expected cost scales with:
 - number of active camera rigs
 - number of entities marked as `ThirdPersonCameraObstacle`
 - collision sample count from the selected `CollisionStrategy`
+- optional adapter work such as lock-on target ranking
 
 Current tradeoffs:
 
-- ignore-set scratch storage is reused per system so the hot path does not heap-allocate per frame for exclusion bookkeeping
-- obstruction samples are emitted from fixed patterns instead of allocating temporary sample vectors each frame
-- obstruction uses AABB tests rather than physics-engine casts, which keeps the crate backend-agnostic but limits geometric fidelity
-- the default path is tuned for one active camera and a moderate obstacle set, which is the common gameplay case
-
-For dense worlds or many simultaneous rigs:
-
-- mark only relevant geometry with `ThirdPersonCameraObstacle`
-- prefer `SingleRay` or `MultiRay` before `SphereProbe`
-- disable cameras that are not currently presenting to the player
+- ignore-set scratch storage is reused per system
+- obstruction samples come from fixed patterns instead of heap-allocated per-frame vectors
+- collision uses AABB tests to stay backend-agnostic
+- the default path is tuned for one active camera and a moderate obstacle set

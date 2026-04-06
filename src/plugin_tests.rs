@@ -10,7 +10,7 @@ enum DemoState {
 }
 
 #[test]
-fn plugin_registers_input_context_and_runtime_defaults() {
+fn plugin_registers_runtime_defaults() {
     let mut app = App::new();
     app.add_plugins((MinimalPlugins, StatesPlugin));
     app.init_state::<DemoState>();

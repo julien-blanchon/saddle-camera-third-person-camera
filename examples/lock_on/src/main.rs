@@ -2,13 +2,19 @@ use saddle_camera_third_person_camera_example_common as common;
 
 use bevy::prelude::*;
 use saddle_camera_third_person_camera::{
-    LockOnSettings, ScreenSpaceFramingSettings, ThirdPersonCamera, ThirdPersonCameraPlugin,
-    ThirdPersonCameraSettings, ThirdPersonCameraSystems,
+    AnchorSettings, ScreenSpaceFramingSettings, ThirdPersonCamera,
+    ThirdPersonCameraEnhancedInputPlugin, ThirdPersonCameraLockOnSettings,
+    ThirdPersonCameraPlugin, ThirdPersonCameraSettings, ThirdPersonCameraShoulderSettings,
+    ThirdPersonCameraSystems,
 };
 
 fn main() {
     let mut app = App::new();
-    app.add_plugins((DefaultPlugins, ThirdPersonCameraPlugin::default()));
+    app.add_plugins((
+        DefaultPlugins,
+        ThirdPersonCameraPlugin::default(),
+        ThirdPersonCameraEnhancedInputPlugin::default(),
+    ));
     common::add_debug_pane(&mut app);
     app.add_systems(Startup, setup);
     app.add_systems(
@@ -85,7 +91,7 @@ fn setup(
         );
     }
 
-    common::spawn_camera(
+    let camera = common::spawn_camera(
         &mut commands,
         "Lock On Camera",
         player,
@@ -93,15 +99,8 @@ fn setup(
         Vec3::new(0.0, 1.5, 0.0),
         ThirdPersonCamera::default(),
         ThirdPersonCameraSettings {
-            framing: saddle_camera_third_person_camera::FramingSettings {
-                shoulder_height: 0.55,
-                aim_height_offset: -0.25,
-                ..default()
-            },
-            lock_on: LockOnSettings {
-                enabled: true,
-                max_distance: 22.0,
-                focus_bias: 0.42,
+            anchor: AnchorSettings {
+                height: 0.55,
                 ..default()
             },
             screen_framing: ScreenSpaceFramingSettings {
@@ -114,4 +113,16 @@ fn setup(
         },
         true,
     );
+    commands.entity(camera).insert((
+        ThirdPersonCameraShoulderSettings {
+            aim_height_offset: -0.25,
+            ..default()
+        },
+        ThirdPersonCameraLockOnSettings {
+            enabled: true,
+            max_distance: 22.0,
+            focus_bias: 0.42,
+            ..default()
+        },
+    ));
 }

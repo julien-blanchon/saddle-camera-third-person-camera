@@ -5464,6 +5464,7 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "saddle-camera-third-person-camera",
+ "saddle-camera-third-person-camera-example-common",
 ]
 
 [[package]]
@@ -5506,6 +5507,7 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "saddle-camera-third-person-camera",
+ "saddle-camera-third-person-camera-example-common",
 ]
 
 [[package]]

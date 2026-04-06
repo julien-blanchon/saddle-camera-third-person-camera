@@ -8,7 +8,9 @@ use saddle_bevy_e2e::{
     scenario::Scenario,
 };
 use saddle_camera_third_person_camera::{
-    ThirdPersonCamera, ThirdPersonCameraLockOn, ThirdPersonCameraRuntime, ThirdPersonCameraTarget,
+    ThirdPersonCamera, ThirdPersonCameraLockOn, ThirdPersonCameraLockOnRuntime,
+    ThirdPersonCameraRuntime, ThirdPersonCameraShoulderRig, ThirdPersonCameraShoulderRuntime,
+    ThirdPersonCameraTarget,
 };
 
 use crate::{LabAlternateTarget, LabCameraEntity, LabReserveTarget};
@@ -96,6 +98,11 @@ fn runtime(world: &World) -> Option<ThirdPersonCameraRuntime> {
     world.get::<ThirdPersonCameraRuntime>(entity).copied()
 }
 
+fn lock_on_runtime(world: &World) -> Option<ThirdPersonCameraLockOnRuntime> {
+    let entity = camera_entity(world)?;
+    world.get::<ThirdPersonCameraLockOnRuntime>(entity).copied()
+}
+
 #[derive(Resource, Clone, Copy)]
 struct CollisionCheckpoint {
     corrected_distance: f32,
@@ -116,10 +123,10 @@ fn store_collision_checkpoint(world: &mut World) {
 }
 
 fn store_lock_on_checkpoint(world: &mut World) {
-    let Some(runtime) = runtime(world) else {
+    let Some(runtime) = lock_on_runtime(world) else {
         return;
     };
-    let Some(target) = runtime.active_lock_on_target else {
+    let Some(target) = runtime.active_target else {
         return;
     };
     world.insert_resource(LockOnCheckpoint { target });
@@ -258,14 +265,14 @@ fn build_shoulder_swap() -> Scenario {
             let Some(camera_entity) = camera_entity(world) else {
                 return false;
             };
-            let Some(camera) = world.get::<ThirdPersonCamera>(camera_entity) else {
+            let Some(rig) = world.get::<ThirdPersonCameraShoulderRig>(camera_entity) else {
                 return false;
             };
-            matches!(camera.target_shoulder_side, saddle_camera_third_person_camera::ShoulderSide::Left)
+            matches!(rig.target_shoulder_side, saddle_camera_third_person_camera::ShoulderSide::Left)
         }))
         .then(Action::PressMouseButton(MouseButton::Right))
         .then(Action::WaitFrames(24))
-        .then(assertions::component_satisfies::<ThirdPersonCameraRuntime>(
+        .then(assertions::component_satisfies::<ThirdPersonCameraShoulderRuntime>(
             "aim blend became active",
             |runtime| runtime.aim_blend > 0.5,
         ))
@@ -273,7 +280,7 @@ fn build_shoulder_swap() -> Scenario {
         .then(Action::ReleaseMouseButton(MouseButton::Right))
         .then(Action::WaitFrames(12))
         .then(assertions::log_summary("third_person_camera_shoulder_swap summary"))
-        .then(inspect::dump_component_json::<ThirdPersonCameraRuntime>(
+        .then(inspect::dump_component_json::<ThirdPersonCameraShoulderRuntime>(
             "third_person_camera_shoulder_runtime",
         ))
         .build()
@@ -289,9 +296,9 @@ fn build_lock_on() -> Scenario {
             assign_alternate_lock_on(world);
         })))
         .then(Action::WaitFrames(20))
-        .then(assertions::component_satisfies::<ThirdPersonCameraRuntime>(
+        .then(assertions::component_satisfies::<ThirdPersonCameraLockOnRuntime>(
             "lock-on acquired a target",
-            |runtime| runtime.active_lock_on_target.is_some() && runtime.lock_on_blend > 0.1,
+            |runtime| runtime.active_target.is_some() && runtime.blend > 0.1,
         ))
         .then(Action::Custom(Box::new(|world: &mut World| {
             store_lock_on_checkpoint(world);
@@ -303,19 +310,19 @@ fn build_lock_on() -> Scenario {
         .then(assertions::custom(
             "lock-on cycled to a different target",
             |world| {
-                let Some(runtime) = runtime(world) else {
+                let Some(runtime) = lock_on_runtime(world) else {
                     return false;
                 };
                 let Some(checkpoint) = world.get_resource::<LockOnCheckpoint>() else {
                     return false;
                 };
                 runtime
-                    .active_lock_on_target
+                    .active_target
                     .is_some_and(|target| target != checkpoint.target)
             },
         ))
         .then(assertions::log_summary("third_person_camera_lock_on summary"))
-        .then(inspect::dump_component_json::<ThirdPersonCameraRuntime>(
+        .then(inspect::dump_component_json::<ThirdPersonCameraLockOnRuntime>(
             "third_person_camera_lock_on_runtime",
         ))
         .then(Action::Screenshot("third_person_camera_lock_on_after".into()))

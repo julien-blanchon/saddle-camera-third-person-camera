@@ -4,8 +4,10 @@ use bevy_enhanced_input::prelude::{
     Action, Axial, Bindings, Cardinal, DeadZone, actions, bindings,
 };
 use saddle_camera_third_person_camera::{
-    ShoulderSide, ThirdPersonCamera, ThirdPersonCameraIgnoreTarget, ThirdPersonCameraMode,
+    ShoulderSide, ThirdPersonCamera, ThirdPersonCameraEnhancedInputPlugin,
+    ThirdPersonCameraIgnoreTarget, ThirdPersonCameraLockOnSettings, ThirdPersonCameraMode,
     ThirdPersonCameraPlugin, ThirdPersonCameraRuntime, ThirdPersonCameraSettings,
+    ThirdPersonCameraShoulderRig, ThirdPersonCameraShoulderSettings,
     ThirdPersonCameraSystems, ThirdPersonCameraTarget, default_input_bindings,
 };
 use saddle_camera_third_person_camera_example_common as common;
@@ -76,6 +78,7 @@ fn main() {
         }),
         PhysicsPlugins::default(),
         ThirdPersonCameraPlugin::default(),
+        ThirdPersonCameraEnhancedInputPlugin::default(),
         CharacterControllerPlugin::always_on(FixedUpdate),
     ));
     common::add_debug_pane(&mut app);
@@ -244,20 +247,28 @@ fn spawn_camera(commands: &mut Commands, player: Entity) -> Entity {
     settings.screen_framing.enabled = true;
     settings.screen_framing.dead_zone = Vec2::new(0.10, 0.08);
     settings.screen_framing.soft_zone = Vec2::new(0.30, 0.24);
-    settings.lock_on.enabled = true;
-    settings.lock_on.max_distance = 34.0;
-    settings.framing.shoulder_height = 1.45;
-    settings.framing.aim_height_offset = -0.35;
+    settings.anchor.height = 1.45;
 
-    let camera = ThirdPersonCamera::looking_at(Vec3::new(0.0, 1.35, 0.0), Vec3::new(0.8, 2.7, 5.6))
-        .with_mode(ThirdPersonCameraMode::Shoulder)
-        .with_shoulder_side(ShoulderSide::Right);
+    let camera =
+        ThirdPersonCamera::looking_at(Vec3::new(0.0, 1.35, 0.0), Vec3::new(0.8, 2.7, 5.6));
 
     commands
         .spawn((
             Name::new("Controller Follow Camera"),
             camera,
             settings,
+            ThirdPersonCameraShoulderRig::default()
+                .with_mode(ThirdPersonCameraMode::Shoulder)
+                .with_shoulder_side(ShoulderSide::Right),
+            ThirdPersonCameraShoulderSettings {
+                aim_height_offset: -0.35,
+                ..default()
+            },
+            ThirdPersonCameraLockOnSettings {
+                enabled: true,
+                max_distance: 34.0,
+                ..default()
+            },
             ThirdPersonCameraTarget {
                 target: player,
                 offset: Vec3::Y * 1.35,
@@ -267,7 +278,7 @@ fn spawn_camera(commands: &mut Commands, player: Entity) -> Entity {
                 ignored_entities: vec![player],
                 recenter_on_target_change: true,
             },
-            saddle_camera_third_person_camera::ThirdPersonCameraInputTarget,
+            saddle_camera_third_person_camera::ThirdPersonCameraEnhancedInputTarget,
             default_input_bindings(),
         ))
         .id()
@@ -442,6 +453,8 @@ fn update_overlay(
         &ThirdPersonCamera,
         &ThirdPersonCameraRuntime,
         &ThirdPersonCameraTarget,
+        Option<&ThirdPersonCameraShoulderRig>,
+        Option<&saddle_camera_third_person_camera::ThirdPersonCameraLockOnRuntime>,
     )>,
     names: Query<&Name>,
     mut overlays: Query<&mut Text, With<common::DemoOverlay>>,
@@ -449,17 +462,18 @@ fn update_overlay(
     let Ok((state, velocity)) = player.get(entities.player) else {
         return;
     };
-    let Ok((camera, runtime, target)) = cameras.get(entities.camera) else {
+    let Ok((camera, runtime, target, shoulder_rig, lock_on_runtime)) = cameras.get(entities.camera) else {
         return;
     };
     let Ok(mut text) = overlays.single_mut() else {
         return;
     };
 
-    let target_name = runtime
-        .active_lock_on_target
+    let target_name = lock_on_runtime
+        .and_then(|runtime| runtime.active_target)
         .and_then(|entity| names.get(entity).ok().map(Name::as_str))
         .unwrap_or("None");
+    let mode = shoulder_rig.map_or(saddle_camera_third_person_camera::ThirdPersonCameraMode::Center, |rig| rig.mode);
 
     text.0 = format!(
         "Third Person + Character Controller\n\
@@ -468,7 +482,7 @@ fn update_overlay(
          desired {:.2} corrected {:.2}\n\
          lock target {target_name}\n\
          tracked entity {}",
-        camera.mode,
+        mode,
         camera.yaw,
         camera.pitch,
         velocity.0.xz().length(),

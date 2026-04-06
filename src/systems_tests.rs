@@ -2,12 +2,14 @@ use bevy::prelude::*;
 use bevy::state::app::StatesPlugin;
 
 use crate::{
-    AutoRecenterSettings, CollisionStrategy, FollowAlignment, LockOnSettings,
-    ScreenSpaceFramingSettings, ShoulderSide, SmoothingSettings, ThirdPersonCamera,
-    ThirdPersonCameraIgnore, ThirdPersonCameraInput, ThirdPersonCameraInputTarget,
-    ThirdPersonCameraLockOn, ThirdPersonCameraLockOnTarget, ThirdPersonCameraObstacle,
+    AutoRecenterSettings, CollisionStrategy, FollowAlignment, ScreenSpaceFramingSettings,
+    ShoulderSide, SmoothingSettings, ThirdPersonCamera, ThirdPersonCameraActionInput,
+    ThirdPersonCameraIgnore, ThirdPersonCameraLockOn, ThirdPersonCameraLockOnRuntime,
+    ThirdPersonCameraLockOnSettings, ThirdPersonCameraLockOnTarget, ThirdPersonCameraObstacle,
     ThirdPersonCameraPlugin, ThirdPersonCameraRuntime, ThirdPersonCameraSettings,
-    ThirdPersonCameraSystems, ThirdPersonCameraTarget, shortest_angle_delta,
+    ThirdPersonCameraShoulderRig, ThirdPersonCameraShoulderRuntime,
+    ThirdPersonCameraShoulderSettings, ThirdPersonCameraSystems, ThirdPersonCameraTarget,
+    shortest_angle_delta,
 };
 
 #[derive(States, Debug, Default, Clone, Copy, Eq, PartialEq, Hash)]
@@ -39,8 +41,12 @@ fn spawn_target(app: &mut App, name: &str, transform: Transform) -> Entity {
 }
 
 fn set_target_transform(app: &mut App, entity: Entity, transform: Transform) {
-    *app.world_mut().get_mut::<Transform>(entity).unwrap() = transform;
-    *app.world_mut().get_mut::<GlobalTransform>(entity).unwrap() = GlobalTransform::from(transform);
+    *app.world_mut()
+        .get_mut::<Transform>(entity)
+        .expect("transform exists") = transform;
+    *app.world_mut()
+        .get_mut::<GlobalTransform>(entity)
+        .expect("global exists") = GlobalTransform::from(transform);
 }
 
 fn assert_angle_close(actual: f32, expected: f32) {
@@ -60,7 +66,6 @@ fn retarget_changes_runtime_pivot() {
         .spawn((
             ThirdPersonCamera::default(),
             ThirdPersonCameraTarget::new(target_a),
-            ThirdPersonCameraInput::default(),
         ))
         .id();
 
@@ -70,7 +75,7 @@ fn retarget_changes_runtime_pivot() {
         .get::<ThirdPersonCameraRuntime>(camera)
         .expect("runtime exists")
         .pivot;
-    assert!(first_pivot.distance(Vec3::new(0.0, 1.9, 0.0)) < 0.5);
+    assert!(first_pivot.distance(Vec3::new(0.0, 1.5, 0.0)) < 0.6);
 
     app.world_mut()
         .get_mut::<ThirdPersonCameraTarget>(camera)
@@ -94,8 +99,8 @@ fn shoulder_toggle_swaps_target_side() {
         .spawn((
             ThirdPersonCamera::default(),
             ThirdPersonCameraTarget::new(target),
-            ThirdPersonCameraInputTarget,
-            ThirdPersonCameraInput {
+            ThirdPersonCameraShoulderRig::default(),
+            ThirdPersonCameraActionInput {
                 shoulder_toggle: true,
                 ..default()
             },
@@ -103,8 +108,11 @@ fn shoulder_toggle_swaps_target_side() {
         .id();
 
     app.update();
-    let camera_state = app.world().get::<ThirdPersonCamera>(camera).unwrap();
-    assert_eq!(camera_state.target_shoulder_side, ShoulderSide::Left);
+    let rig = app
+        .world()
+        .get::<ThirdPersonCameraShoulderRig>(camera)
+        .expect("rig exists");
+    assert_eq!(rig.target_shoulder_side, ShoulderSide::Left);
 }
 
 #[test]
@@ -137,7 +145,10 @@ fn obstruction_shortens_distance() {
 
     app.update();
 
-    let runtime = app.world().get::<ThirdPersonCameraRuntime>(camera).unwrap();
+    let runtime = app
+        .world()
+        .get::<ThirdPersonCameraRuntime>(camera)
+        .expect("runtime exists");
     assert!(runtime.obstruction_active);
     assert!(runtime.obstruction_distance < runtime.desired_distance);
 }
@@ -160,8 +171,8 @@ fn aim_hold_uses_temporary_mode_override() {
         .spawn((
             ThirdPersonCamera::default(),
             ThirdPersonCameraTarget::new(target),
-            ThirdPersonCameraInputTarget,
-            ThirdPersonCameraInput {
+            ThirdPersonCameraShoulderRig::default(),
+            ThirdPersonCameraActionInput {
                 aim: true,
                 ..default()
             },
@@ -170,22 +181,28 @@ fn aim_hold_uses_temporary_mode_override() {
 
     app.update();
 
-    let camera_state = app.world().get::<ThirdPersonCamera>(camera).unwrap();
-    let runtime = app.world().get::<ThirdPersonCameraRuntime>(camera).unwrap();
-    assert_eq!(
-        camera_state.target_mode,
-        crate::ThirdPersonCameraMode::Center
-    );
+    let rig = app
+        .world()
+        .get::<ThirdPersonCameraShoulderRig>(camera)
+        .expect("rig exists");
+    let runtime = app
+        .world()
+        .get::<ThirdPersonCameraShoulderRuntime>(camera)
+        .expect("shoulder runtime exists");
+    assert_eq!(rig.target_mode, crate::ThirdPersonCameraMode::Center);
     assert_eq!(runtime.target_aim_blend, 1.0);
 
     app.update();
 
-    let camera_state = app.world().get::<ThirdPersonCamera>(camera).unwrap();
-    let runtime = app.world().get::<ThirdPersonCameraRuntime>(camera).unwrap();
-    assert_eq!(
-        camera_state.target_mode,
-        crate::ThirdPersonCameraMode::Center
-    );
+    let rig = app
+        .world()
+        .get::<ThirdPersonCameraShoulderRig>(camera)
+        .expect("rig exists");
+    let runtime = app
+        .world()
+        .get::<ThirdPersonCameraShoulderRuntime>(camera)
+        .expect("shoulder runtime exists");
+    assert_eq!(rig.target_mode, crate::ThirdPersonCameraMode::Center);
     assert_eq!(runtime.target_aim_blend, 0.0);
 }
 
@@ -198,8 +215,8 @@ fn shoulder_hold_is_temporary() {
         .spawn((
             ThirdPersonCamera::default(),
             ThirdPersonCameraTarget::new(target),
-            ThirdPersonCameraInputTarget,
-            ThirdPersonCameraInput {
+            ThirdPersonCameraShoulderRig::default(),
+            ThirdPersonCameraActionInput {
                 shoulder_hold: true,
                 ..default()
             },
@@ -208,22 +225,28 @@ fn shoulder_hold_is_temporary() {
 
     app.update();
 
-    let camera_state = app.world().get::<ThirdPersonCamera>(camera).unwrap();
-    let runtime = app.world().get::<ThirdPersonCameraRuntime>(camera).unwrap();
-    assert_eq!(
-        camera_state.target_mode,
-        crate::ThirdPersonCameraMode::Center
-    );
+    let rig = app
+        .world()
+        .get::<ThirdPersonCameraShoulderRig>(camera)
+        .expect("rig exists");
+    let runtime = app
+        .world()
+        .get::<ThirdPersonCameraShoulderRuntime>(camera)
+        .expect("shoulder runtime exists");
+    assert_eq!(rig.target_mode, crate::ThirdPersonCameraMode::Center);
     assert_eq!(runtime.target_shoulder_blend, 1.0);
 
     app.update();
 
-    let camera_state = app.world().get::<ThirdPersonCamera>(camera).unwrap();
-    let runtime = app.world().get::<ThirdPersonCameraRuntime>(camera).unwrap();
-    assert_eq!(
-        camera_state.target_mode,
-        crate::ThirdPersonCameraMode::Center
-    );
+    let rig = app
+        .world()
+        .get::<ThirdPersonCameraShoulderRig>(camera)
+        .expect("rig exists");
+    let runtime = app
+        .world()
+        .get::<ThirdPersonCameraShoulderRuntime>(camera)
+        .expect("shoulder runtime exists");
+    assert_eq!(rig.target_mode, crate::ThirdPersonCameraMode::Center);
     assert_eq!(runtime.target_shoulder_blend, 0.0);
 }
 
@@ -253,7 +276,10 @@ fn auto_recenter_target_forward_uses_alignment_setting() {
 
     app.update();
 
-    let camera_state = app.world().get::<ThirdPersonCamera>(camera).unwrap();
+    let camera_state = app
+        .world()
+        .get::<ThirdPersonCamera>(camera)
+        .expect("camera exists");
     assert_angle_close(camera_state.target_yaw, -std::f32::consts::FRAC_PI_2);
 }
 
@@ -281,7 +307,10 @@ fn auto_recenter_movement_alignment_uses_motion_heading() {
     set_target_transform(&mut app, target, Transform::from_xyz(4.0, 0.0, 0.0));
     app.update();
 
-    let camera_state = app.world().get::<ThirdPersonCamera>(camera).unwrap();
+    let camera_state = app
+        .world()
+        .get::<ThirdPersonCamera>(camera)
+        .expect("camera exists");
     assert_angle_close(camera_state.target_yaw, std::f32::consts::FRAC_PI_2);
 }
 
@@ -316,7 +345,10 @@ fn ignored_obstacles_do_not_shorten_distance() {
 
     app.update();
 
-    let runtime = app.world().get::<ThirdPersonCameraRuntime>(camera).unwrap();
+    let runtime = app
+        .world()
+        .get::<ThirdPersonCameraRuntime>(camera)
+        .expect("runtime exists");
     assert!(!runtime.obstruction_active);
     assert_eq!(runtime.corrected_distance, runtime.desired_distance);
 }
@@ -335,7 +367,10 @@ fn large_target_radius_raises_minimum_distance() {
 
     app.update();
 
-    let runtime = app.world().get::<ThirdPersonCameraRuntime>(camera).unwrap();
+    let runtime = app
+        .world()
+        .get::<ThirdPersonCameraRuntime>(camera)
+        .expect("runtime exists");
     assert!(runtime.desired_distance >= 1.79);
 }
 
@@ -363,20 +398,21 @@ fn lock_on_toggle_selects_forward_candidate() {
         .spawn((
             ThirdPersonCamera::default(),
             ThirdPersonCameraTarget::new(target),
-            ThirdPersonCameraInput {
+            ThirdPersonCameraLockOn::default(),
+            ThirdPersonCameraActionInput {
                 lock_on_toggle: true,
                 ..default()
             },
+            ThirdPersonCameraLockOnSettings {
+                enabled: true,
+                max_distance: 20.0,
+                blend_smoothing: 0.0,
+                ..default()
+            },
             ThirdPersonCameraSettings {
-                lock_on: LockOnSettings {
-                    enabled: true,
-                    max_distance: 20.0,
-                    ..default()
-                },
                 smoothing: SmoothingSettings {
                     orientation_smoothing: 0.0,
                     target_follow_smoothing: 0.0,
-                    aim_blend: 0.0,
                     ..default()
                 },
                 ..default()
@@ -386,11 +422,17 @@ fn lock_on_toggle_selects_forward_candidate() {
 
     app.update();
 
-    let lock_on = app.world().get::<ThirdPersonCameraLockOn>(camera).unwrap();
-    let runtime = app.world().get::<ThirdPersonCameraRuntime>(camera).unwrap();
+    let lock_on = app
+        .world()
+        .get::<ThirdPersonCameraLockOn>(camera)
+        .expect("lock-on exists");
+    let runtime = app
+        .world()
+        .get::<ThirdPersonCameraLockOnRuntime>(camera)
+        .expect("lock-on runtime exists");
     assert_eq!(lock_on.active_target, Some(front_target));
-    assert_eq!(runtime.active_lock_on_target, Some(front_target));
-    assert!(runtime.lock_on_blend > 0.9);
+    assert_eq!(runtime.active_target, Some(front_target));
+    assert!(runtime.blend > 0.9);
 }
 
 #[test]
@@ -420,16 +462,17 @@ fn lock_on_cycle_moves_to_the_next_target() {
         .spawn((
             ThirdPersonCamera::default(),
             ThirdPersonCameraTarget::new(target),
+            ThirdPersonCameraLockOn::default(),
+            ThirdPersonCameraLockOnSettings {
+                enabled: true,
+                max_distance: 20.0,
+                blend_smoothing: 0.0,
+                ..default()
+            },
             ThirdPersonCameraSettings {
-                lock_on: LockOnSettings {
-                    enabled: true,
-                    max_distance: 20.0,
-                    ..default()
-                },
                 smoothing: SmoothingSettings {
                     orientation_smoothing: 0.0,
                     target_follow_smoothing: 0.0,
-                    aim_blend: 0.0,
                     ..default()
                 },
                 ..default()
@@ -438,28 +481,28 @@ fn lock_on_cycle_moves_to_the_next_target() {
         .id();
 
     app.world_mut()
-        .get_mut::<ThirdPersonCameraInput>(camera)
-        .unwrap()
+        .get_mut::<ThirdPersonCameraActionInput>(camera)
+        .expect("action input exists")
         .lock_on_toggle = true;
     app.update();
     assert_eq!(
         app.world()
             .get::<ThirdPersonCameraLockOn>(camera)
-            .unwrap()
+            .expect("lock-on exists")
             .active_target,
         Some(front_target)
     );
 
     app.world_mut()
-        .get_mut::<ThirdPersonCameraInput>(camera)
-        .unwrap()
+        .get_mut::<ThirdPersonCameraActionInput>(camera)
+        .expect("action input exists")
         .lock_on_next = true;
     app.update();
 
     assert_eq!(
         app.world()
             .get::<ThirdPersonCameraLockOn>(camera)
-            .unwrap()
+            .expect("lock-on exists")
             .active_target,
         Some(right_target)
     );
@@ -494,7 +537,7 @@ fn screen_framing_dead_zone_absorbs_small_motion() {
     let initial_pivot = app
         .world()
         .get::<ThirdPersonCameraRuntime>(camera)
-        .unwrap()
+        .expect("runtime exists")
         .pivot;
 
     set_target_transform(&mut app, target, Transform::from_xyz(0.2, 0.0, 0.0));
@@ -502,7 +545,7 @@ fn screen_framing_dead_zone_absorbs_small_motion() {
     let small_motion_pivot = app
         .world()
         .get::<ThirdPersonCameraRuntime>(camera)
-        .unwrap()
+        .expect("runtime exists")
         .pivot;
     assert!((small_motion_pivot.x - initial_pivot.x).abs() < 0.05);
 
@@ -511,7 +554,7 @@ fn screen_framing_dead_zone_absorbs_small_motion() {
     let large_motion_pivot = app
         .world()
         .get::<ThirdPersonCameraRuntime>(camera)
-        .unwrap()
+        .expect("runtime exists")
         .pivot;
     assert!(large_motion_pivot.x > small_motion_pivot.x + 0.3);
 }
@@ -525,15 +568,15 @@ fn aim_mode_lowers_look_target_via_aim_height_offset() {
         .spawn((
             ThirdPersonCamera::default(),
             ThirdPersonCameraTarget::new(target),
-            ThirdPersonCameraInputTarget,
+            ThirdPersonCameraShoulderRig::default(),
+            ThirdPersonCameraShoulderSettings {
+                aim_height_offset: -0.5,
+                shoulder_blend_smoothing: 0.0,
+                aim_blend_smoothing: 0.0,
+                ..default()
+            },
             ThirdPersonCameraSettings {
-                framing: crate::FramingSettings {
-                    aim_height_offset: -0.5,
-                    ..default()
-                },
                 smoothing: SmoothingSettings {
-                    aim_blend: 0.0,
-                    shoulder_blend: 0.0,
                     orientation_smoothing: 0.0,
                     target_follow_smoothing: 0.0,
                     zoom_smoothing: 0.0,
@@ -549,20 +592,20 @@ fn aim_mode_lowers_look_target_via_aim_height_offset() {
     let baseline_y = app
         .world()
         .get::<ThirdPersonCameraRuntime>(camera)
-        .unwrap()
+        .expect("runtime exists")
         .look_target
         .y;
 
     app.world_mut()
-        .get_mut::<ThirdPersonCameraInput>(camera)
-        .unwrap()
+        .get_mut::<ThirdPersonCameraActionInput>(camera)
+        .expect("action input exists")
         .aim = true;
     app.update();
 
     let aim_y = app
         .world()
         .get::<ThirdPersonCameraRuntime>(camera)
-        .unwrap()
+        .expect("runtime exists")
         .look_target
         .y;
     assert!(

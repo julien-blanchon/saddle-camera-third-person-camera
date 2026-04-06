@@ -2,7 +2,8 @@ use saddle_camera_third_person_camera_example_common as common;
 
 use bevy::prelude::*;
 use saddle_camera_third_person_camera::{
-    ThirdPersonCamera, ThirdPersonCameraPlugin, ThirdPersonCameraTarget,
+    AnchorSettings, ThirdPersonCamera, ThirdPersonCameraEnhancedInputPlugin,
+    ThirdPersonCameraPlugin, ThirdPersonCameraSettings, ThirdPersonCameraTarget,
 };
 
 #[derive(Resource)]
@@ -15,7 +16,11 @@ struct RetargetState {
 
 fn main() {
     let mut app = App::new();
-    app.add_plugins((DefaultPlugins, ThirdPersonCameraPlugin::default()));
+    app.add_plugins((
+        DefaultPlugins,
+        ThirdPersonCameraPlugin::default(),
+        ThirdPersonCameraEnhancedInputPlugin::default(),
+    ));
     common::add_debug_pane(&mut app);
     app.add_systems(Startup, setup);
     app.add_systems(Update, advance_retarget);
@@ -90,9 +95,9 @@ fn setup(
         Vec3::new(0.0, 2.0, 8.0),
         Vec3::new(0.0, 1.4, 0.0),
         ThirdPersonCamera::default(),
-        saddle_camera_third_person_camera::ThirdPersonCameraSettings {
-            framing: saddle_camera_third_person_camera::FramingSettings {
-                shoulder_height: 0.55,
+        ThirdPersonCameraSettings {
+            anchor: AnchorSettings {
+                height: 0.55,
                 ..default()
             },
             ..default()

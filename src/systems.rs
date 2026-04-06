@@ -8,20 +8,20 @@ use bevy::{
 };
 
 use crate::{
-    CollisionStrategy, ShoulderSide, ThirdPersonCamera, ThirdPersonCameraIgnore,
-    ThirdPersonCameraIgnoreTarget, ThirdPersonCameraInput, ThirdPersonCameraInputTarget,
-    ThirdPersonCameraLockOn, ThirdPersonCameraLockOnTarget, ThirdPersonCameraMode,
+    CollisionStrategy, ObstacleType, ThirdPersonCamera, ThirdPersonCameraActionInput,
+    ThirdPersonCameraCursorController, ThirdPersonCameraIgnore, ThirdPersonCameraIgnoreTarget,
+    ThirdPersonCameraInput, ThirdPersonCameraLockOn, ThirdPersonCameraLockOnRuntime,
+    ThirdPersonCameraLockOnSettings, ThirdPersonCameraLockOnTarget, ThirdPersonCameraMode,
     ThirdPersonCameraObstacle, ThirdPersonCameraRuntime, ThirdPersonCameraSettings,
-    ThirdPersonCameraTarget,
+    ThirdPersonCameraShoulderRig, ThirdPersonCameraShoulderRuntime,
+    ThirdPersonCameraShoulderSettings, ThirdPersonCameraTarget,
+    action::{aim_blend_target, current_mode, effective_target_mode, shoulder_blend_target},
     math::{
         CameraPose, camera_pose_from_look_target, forward_from_angles, segment_aabb_hit,
         smooth_angle, smooth_scalar, smooth_vec3, wrap_angle, yaw_from_direction,
         yaw_pitch_rotation,
     },
 };
-
-#[derive(Resource, Default, Clone, Copy)]
-pub(crate) struct ActiveInputCamera(pub Option<Entity>);
 
 pub(crate) fn initialize_added_cameras(
     mut cameras: Query<
@@ -35,16 +35,6 @@ pub(crate) fn initialize_added_cameras(
     >,
 ) {
     for (mut camera, settings, mut runtime, mut transform) in &mut cameras {
-        if settings.framing.default_side == ShoulderSide::Left
-            && camera.shoulder_side == ShoulderSide::Right
-            && camera.target_shoulder_side == ShoulderSide::Right
-            && camera.home_shoulder_side == ShoulderSide::Right
-        {
-            camera.shoulder_side = ShoulderSide::Left;
-            camera.target_shoulder_side = ShoulderSide::Left;
-            camera.home_shoulder_side = ShoulderSide::Left;
-        }
-
         let distance = clamp_camera_distance(camera.distance, settings, &camera);
         camera.distance = distance;
         camera.target_distance = clamp_camera_distance(camera.target_distance, settings, &camera);
@@ -56,37 +46,7 @@ pub(crate) fn initialize_added_cameras(
         runtime.desired_distance = distance;
         runtime.corrected_distance = distance;
         runtime.obstruction_distance = distance;
-        runtime.target_shoulder_blend =
-            shoulder_blend_target(camera.target_mode, camera.target_shoulder_side);
-        runtime.shoulder_blend = runtime.target_shoulder_blend;
-        runtime.target_aim_blend = aim_blend_target(camera.target_mode, settings);
-        runtime.aim_blend = runtime.target_aim_blend;
-        runtime.cursor_locked = settings.cursor.lock_by_default;
-        *transform = Transform::from_xyz(0.0, settings.framing.shoulder_height, distance);
-    }
-}
-
-pub(crate) fn route_active_input(
-    mut active_input_camera: ResMut<ActiveInputCamera>,
-    mut cameras: ParamSet<(
-        Query<(Entity, &Camera, &ThirdPersonCameraSettings), With<ThirdPersonCameraInputTarget>>,
-        Query<(Entity, &mut ThirdPersonCameraInput), With<ThirdPersonCamera>>,
-    )>,
-) {
-    let active = cameras
-        .p0()
-        .iter()
-        .filter(|(_, camera_component, settings)| camera_component.is_active && settings.enabled)
-        .max_by_key(|(entity, camera_component, _)| (camera_component.order, entity.to_bits()))
-        .map(|(entity, _, _)| entity);
-    active_input_camera.0 = active;
-
-    if let Some(active) = active {
-        for (entity, mut input) in &mut cameras.p1() {
-            if entity != active {
-                input.clear_transient();
-            }
-        }
+        *transform = Transform::from_xyz(0.0, settings.anchor.height, distance);
     }
 }
 
@@ -101,13 +61,24 @@ pub(crate) fn update_lock_on_selection(
         &ThirdPersonCamera,
         &ThirdPersonCameraSettings,
         Option<&ThirdPersonCameraTarget>,
-        &ThirdPersonCameraInput,
-        &mut ThirdPersonCameraLockOn,
+        Option<&ThirdPersonCameraActionInput>,
+        Option<&mut ThirdPersonCameraLockOn>,
+        Option<&ThirdPersonCameraLockOnSettings>,
         &ThirdPersonCameraRuntime,
     )>,
 ) {
-    for (camera, settings, target, input, mut lock_on, runtime) in &mut cameras {
-        if !settings.lock_on.enabled {
+    for (camera, camera_settings, target, action_input, lock_on, lock_on_settings, runtime) in
+        &mut cameras
+    {
+        let Some(mut lock_on) = lock_on else {
+            continue;
+        };
+        let Some(settings) = lock_on_settings else {
+            lock_on.active_target = None;
+            continue;
+        };
+
+        if !settings.enabled {
             lock_on.active_target = None;
             continue;
         }
@@ -125,7 +96,7 @@ pub(crate) fn update_lock_on_selection(
             &helper,
             target,
             camera,
-            settings,
+            camera_settings,
             runtime.last_target_position,
         ) else {
             lock_on.active_target = None;
@@ -143,11 +114,12 @@ pub(crate) fn update_lock_on_selection(
             lock_on.active_target,
             target.target,
             origin,
-            settings.lock_on.max_distance,
+            settings.max_distance,
         ) {
             lock_on.active_target = None;
         }
 
+        let input = action_input.copied().unwrap_or_default();
         if input.lock_on_toggle {
             lock_on.active_target = if lock_on.active_target.is_some() {
                 None
@@ -157,7 +129,7 @@ pub(crate) fn update_lock_on_selection(
                     &candidates,
                     origin,
                     camera.target_yaw,
-                    settings.lock_on.max_distance,
+                    settings.max_distance,
                     target.target,
                 )
             };
@@ -168,7 +140,7 @@ pub(crate) fn update_lock_on_selection(
                 origin,
                 camera.target_yaw,
                 lock_on.active_target,
-                settings.lock_on.max_distance,
+                settings.max_distance,
                 target.target,
                 true,
             );
@@ -179,7 +151,7 @@ pub(crate) fn update_lock_on_selection(
                 origin,
                 camera.target_yaw,
                 lock_on.active_target,
-                settings.lock_on.max_distance,
+                settings.max_distance,
                 target.target,
                 false,
             );
@@ -189,7 +161,6 @@ pub(crate) fn update_lock_on_selection(
 
 pub(crate) fn update_camera_runtime(
     time: Res<Time>,
-    active_input_camera: Res<ActiveInputCamera>,
     helper: TransformHelper,
     children: Query<&Children>,
     ignored: Query<Entity, With<ThirdPersonCameraIgnore>>,
@@ -197,28 +168,61 @@ pub(crate) fn update_camera_runtime(
     lock_on_targets: Query<(&ThirdPersonCameraLockOnTarget, Option<&GlobalTransform>)>,
     mut ignore_scratch: Local<HashSet<Entity>>,
     mut primary_window: Query<&mut CursorOptions, With<PrimaryWindow>>,
-    mut cameras: Query<(
-        Entity,
-        &Projection,
-        &mut ThirdPersonCamera,
-        &ThirdPersonCameraSettings,
-        Option<Ref<'_, ThirdPersonCameraTarget>>,
-        &mut ThirdPersonCameraLockOn,
-        &mut ThirdPersonCameraRuntime,
-        &ThirdPersonCameraInput,
+    mut camera_queries: ParamSet<(
+        Query<
+            (
+                Entity,
+                &Camera,
+                &ThirdPersonCameraSettings,
+                &ThirdPersonCameraCursorController,
+            ),
+            With<ThirdPersonCamera>,
+        >,
+        Query<(
+            Entity,
+            &Projection,
+            &mut ThirdPersonCamera,
+            &ThirdPersonCameraSettings,
+            Option<Ref<'_, ThirdPersonCameraTarget>>,
+            Option<&mut ThirdPersonCameraShoulderRig>,
+            Option<&ThirdPersonCameraShoulderSettings>,
+            Option<&mut ThirdPersonCameraShoulderRuntime>,
+            Option<&mut ThirdPersonCameraLockOn>,
+            Option<&ThirdPersonCameraLockOnSettings>,
+            Option<&mut ThirdPersonCameraLockOnRuntime>,
+            Option<&mut ThirdPersonCameraCursorController>,
+            &mut ThirdPersonCameraRuntime,
+            &ThirdPersonCameraInput,
+            Option<&ThirdPersonCameraActionInput>,
+        )>,
     )>,
 ) {
     let dt = time.delta_secs();
+    let active_cursor_camera = camera_queries
+        .p0()
+        .iter()
+        .filter(|(_, camera_component, settings, _)| camera_component.is_active && settings.enabled)
+        .max_by_key(|(entity, camera_component, _, _)| (camera_component.order, entity.to_bits()))
+        .map(|(entity, _, _, _)| entity);
+    let mut active_cursor_locked = None;
+
     for (
         camera_entity,
         projection,
         mut camera,
         settings,
         target,
-        mut lock_on,
+        shoulder_rig,
+        shoulder_settings,
+        shoulder_runtime,
+        lock_on,
+        lock_on_settings,
+        lock_on_runtime,
+        cursor_controller,
         mut runtime,
         input,
-    ) in &mut cameras
+        action_input,
+    ) in &mut camera_queries.p1()
     {
         if !settings.enabled {
             continue;
@@ -246,7 +250,7 @@ pub(crate) fn update_camera_runtime(
             continue;
         };
 
-        let target_changed = target.as_ref().is_some_and(|target| target.is_changed());
+        let target_changed = target.as_ref().is_some_and(|value| value.is_changed());
         let desired_pivot = apply_screen_space_framing(
             projection,
             &camera,
@@ -272,19 +276,70 @@ pub(crate) fn update_camera_runtime(
                     .is_some_and(|value| value.recenter_on_target_change),
         );
 
-        let desired_mode = effective_target_mode(
-            camera.target_mode,
-            input,
-            settings,
-            lock_on.active_target.is_some(),
-        );
+        let action_input = action_input.copied().unwrap_or_default();
+        if action_input.has_manual_motion() {
+            runtime.manual_input_this_frame = true;
+        }
 
-        runtime.idle_seconds = if input.has_manual_motion() {
+        if let (Some(mut shoulder_rig), Some(shoulder_settings)) = (shoulder_rig, shoulder_settings)
+        {
+            if action_input.raw_mode_center {
+                shoulder_rig.target_mode = ThirdPersonCameraMode::Center;
+            }
+            if action_input.raw_mode_shoulder {
+                shoulder_rig.target_mode = ThirdPersonCameraMode::Shoulder;
+            }
+            if action_input.shoulder_toggle {
+                shoulder_rig.target_shoulder_side = shoulder_rig.target_shoulder_side.opposite();
+                if shoulder_rig.target_mode == ThirdPersonCameraMode::Center {
+                    shoulder_rig.target_mode = ThirdPersonCameraMode::Shoulder;
+                }
+            }
+
+            let lock_on_active = lock_on
+                .as_ref()
+                .and_then(|value| value.active_target)
+                .is_some()
+                && lock_on_settings.is_some_and(|settings| settings.enabled);
+            let desired_mode = effective_target_mode(
+                shoulder_rig.target_mode,
+                &action_input,
+                shoulder_settings,
+                lock_on_active,
+            );
+
+            if let Some(mut shoulder_runtime) = shoulder_runtime {
+                shoulder_runtime.target_shoulder_blend =
+                    shoulder_blend_target(desired_mode, shoulder_rig.target_shoulder_side);
+                shoulder_runtime.shoulder_blend = smooth_scalar(
+                    shoulder_runtime.shoulder_blend,
+                    shoulder_runtime.target_shoulder_blend,
+                    shoulder_settings.shoulder_blend_smoothing,
+                    dt,
+                );
+                shoulder_runtime.target_aim_blend =
+                    aim_blend_target(desired_mode, shoulder_settings);
+                shoulder_runtime.aim_blend = smooth_scalar(
+                    shoulder_runtime.aim_blend,
+                    shoulder_runtime.target_aim_blend,
+                    shoulder_settings.aim_blend_smoothing,
+                    dt,
+                );
+                shoulder_rig.shoulder_side = if shoulder_runtime.shoulder_blend < 0.0 {
+                    crate::ShoulderSide::Left
+                } else {
+                    crate::ShoulderSide::Right
+                };
+                shoulder_rig.mode =
+                    current_mode(shoulder_runtime.aim_blend, shoulder_runtime.shoulder_blend);
+            }
+        }
+
+        runtime.idle_seconds = if runtime.manual_input_this_frame {
             0.0
         } else {
             runtime.idle_seconds + dt
         };
-        runtime.manual_input_this_frame = input.has_manual_motion();
 
         if settings.auto_recenter.enabled
             && !runtime.manual_input_this_frame
@@ -302,36 +357,48 @@ pub(crate) fn update_camera_runtime(
             dt,
         );
 
-        if settings.lock_on.enabled {
-            if let Some(lock_target) = lock_on.active_target {
-                let valid_anchor = lock_on_target_anchor(&helper, &lock_on_targets, lock_target)
-                    .filter(|anchor| {
-                        runtime.pivot.distance(*anchor) <= settings.lock_on.max_distance
-                    });
-                if let Some(anchor) = valid_anchor {
-                    runtime.lock_on_focus = runtime
-                        .pivot
-                        .lerp(anchor, settings.lock_on.focus_bias.clamp(0.0, 1.0));
-                    runtime.target_lock_on_blend = 1.0;
-                    runtime.active_lock_on_target = Some(lock_target);
-                    if let Some(yaw) = yaw_from_direction(anchor - runtime.pivot) {
-                        camera.target_yaw = yaw;
+        if let (Some(mut lock_on), Some(lock_on_settings), Some(mut lock_on_runtime)) =
+            (lock_on, lock_on_settings, lock_on_runtime)
+        {
+            if lock_on_settings.enabled {
+                if let Some(lock_target) = lock_on.active_target {
+                    let valid_anchor =
+                        lock_on_target_anchor(&helper, &lock_on_targets, lock_target).filter(
+                            |anchor| {
+                                runtime.pivot.distance(*anchor) <= lock_on_settings.max_distance
+                            },
+                        );
+                    if let Some(anchor) = valid_anchor {
+                        lock_on_runtime.focus = runtime
+                            .pivot
+                            .lerp(anchor, lock_on_settings.focus_bias.clamp(0.0, 1.0));
+                        lock_on_runtime.target_blend = 1.0;
+                        lock_on_runtime.active_target = Some(lock_target);
+                        if let Some(yaw) = yaw_from_direction(anchor - runtime.pivot) {
+                            camera.target_yaw = yaw;
+                        }
+                        camera.target_pitch = settings
+                            .clamped_pitch(camera.home_pitch - lock_on_settings.pitch_offset.abs());
+                    } else {
+                        lock_on.active_target = None;
+                        lock_on_runtime.target_blend = 0.0;
+                        lock_on_runtime.active_target = None;
                     }
-                    camera.target_pitch = settings
-                        .clamped_pitch(camera.home_pitch - settings.lock_on.pitch_offset.abs());
                 } else {
-                    lock_on.active_target = None;
-                    runtime.target_lock_on_blend = 0.0;
-                    runtime.active_lock_on_target = None;
+                    lock_on_runtime.target_blend = 0.0;
+                    lock_on_runtime.active_target = None;
                 }
             } else {
-                runtime.target_lock_on_blend = 0.0;
-                runtime.active_lock_on_target = None;
+                lock_on.active_target = None;
+                lock_on_runtime.target_blend = 0.0;
+                lock_on_runtime.active_target = None;
             }
-        } else {
-            lock_on.active_target = None;
-            runtime.target_lock_on_blend = 0.0;
-            runtime.active_lock_on_target = None;
+            lock_on_runtime.blend = smooth_scalar(
+                lock_on_runtime.blend,
+                lock_on_runtime.target_blend,
+                lock_on_settings.blend_smoothing,
+                dt,
+            );
         }
 
         camera.target_pitch = settings.clamped_pitch(camera.target_pitch);
@@ -355,44 +422,17 @@ pub(crate) fn update_camera_runtime(
             dt,
         );
 
-        runtime.target_shoulder_blend =
-            shoulder_blend_target(desired_mode, camera.target_shoulder_side);
-        runtime.shoulder_blend = smooth_scalar(
-            runtime.shoulder_blend,
-            runtime.target_shoulder_blend,
-            settings.smoothing.shoulder_blend,
-            dt,
-        );
-        runtime.target_aim_blend = aim_blend_target(desired_mode, settings);
-        runtime.aim_blend = smooth_scalar(
-            runtime.aim_blend,
-            runtime.target_aim_blend,
-            settings.smoothing.aim_blend,
-            dt,
-        );
-        runtime.lock_on_blend = smooth_scalar(
-            runtime.lock_on_blend,
-            runtime.target_lock_on_blend,
-            settings.smoothing.aim_blend,
-            dt,
-        );
-        camera.shoulder_side = if runtime.shoulder_blend < 0.0 {
-            ShoulderSide::Left
-        } else {
-            ShoulderSide::Right
-        };
-        camera.mode = current_mode(runtime.aim_blend, runtime.shoulder_blend);
-
-        if Some(camera_entity) == active_input_camera.0
-            && input.cursor_lock_toggle
-            && settings.cursor.allow_toggle
-        {
-            runtime.cursor_locked = !runtime.cursor_locked;
-        }
-        if Some(camera_entity) == active_input_camera.0 {
-            apply_cursor_lock(runtime.cursor_locked, &mut primary_window);
+        if Some(camera_entity) == active_cursor_camera {
+            if let Some(mut cursor_controller) = cursor_controller {
+                if action_input.cursor_lock_toggle && cursor_controller.allow_toggle {
+                    cursor_controller.locked = !cursor_controller.locked;
+                }
+                active_cursor_locked = Some(cursor_controller.locked);
+            }
         }
     }
+
+    apply_cursor_lock(active_cursor_locked.unwrap_or(false), &mut primary_window);
 }
 
 pub(crate) fn resolve_obstruction(
@@ -408,6 +448,9 @@ pub(crate) fn resolve_obstruction(
         &ThirdPersonCamera,
         &ThirdPersonCameraSettings,
         Option<&ThirdPersonCameraTarget>,
+        Option<&ThirdPersonCameraShoulderSettings>,
+        Option<&ThirdPersonCameraShoulderRuntime>,
+        Option<&ThirdPersonCameraLockOnRuntime>,
         &mut ThirdPersonCameraRuntime,
     )>,
     children: Query<&Children>,
@@ -416,24 +459,42 @@ pub(crate) fn resolve_obstruction(
     mut ignore_scratch: Local<HashSet<Entity>>,
 ) {
     let dt = time.delta_secs();
-    for (camera_entity, camera, settings, target, mut runtime) in &mut cameras {
+    for (
+        camera_entity,
+        camera,
+        settings,
+        target,
+        shoulder_settings,
+        shoulder_runtime,
+        lock_on_runtime,
+        mut runtime,
+    ) in &mut cameras
+    {
         if !settings.enabled {
             continue;
         }
 
+        let shoulder_offset = shoulder_settings.map_or(0.0, |settings| settings.shoulder_offset);
+        let aim_height_offset =
+            shoulder_settings.map_or(0.0, |settings| settings.aim_height_offset);
+        let aim_pitch_offset = shoulder_settings.map_or(0.0, |settings| settings.aim_pitch_offset);
+        let aim_distance_scale =
+            shoulder_settings.map_or(1.0, |settings| settings.aim_distance_scale);
+        let shoulder_blend = shoulder_runtime.map_or(0.0, |runtime| runtime.shoulder_blend);
+        let aim_blend = shoulder_runtime.map_or(0.0, |runtime| runtime.aim_blend);
         let base_look_target = runtime.pivot
-            + right_offset(
-                camera.yaw,
-                runtime.shoulder_blend,
-                settings.framing.shoulder_offset,
-            )
-            + Vec3::Y * (settings.framing.aim_height_offset * runtime.aim_blend);
-        let look_target = base_look_target.lerp(runtime.lock_on_focus, runtime.lock_on_blend);
-        let aim_pitch = camera.pitch + settings.framing.aim_pitch_offset * runtime.aim_blend;
-        let aim_scale = 1.0 - (1.0 - settings.framing.aim_distance_scale) * runtime.aim_blend;
+            + right_offset(camera.yaw, shoulder_blend, shoulder_offset)
+            + Vec3::Y * (aim_height_offset * aim_blend);
+        let look_target = if let Some(lock_on_runtime) = lock_on_runtime {
+            base_look_target.lerp(lock_on_runtime.focus, lock_on_runtime.blend)
+        } else {
+            base_look_target
+        };
+        let aim_pitch = camera.pitch + aim_pitch_offset * aim_blend;
+        let distance_scale = 1.0 - (1.0 - aim_distance_scale) * aim_blend;
         let minimum_distance =
             minimum_camera_distance(settings, camera).max(settings.zoom.min_distance);
-        let desired_distance = (camera.distance * aim_scale)
+        let desired_distance = (camera.distance * distance_scale)
             .max(minimum_distance)
             .min(settings.zoom.max_distance.max(minimum_distance));
         let pose =
@@ -541,8 +602,8 @@ fn sample_target(
     let target_position = translation + rotation * target.offset;
     let look_anchor = target_position
         + Vec3::Y
-            * (settings.framing.shoulder_height
-                + settings.framing.target_radius_clearance
+            * (settings.anchor.height
+                + settings.anchor.radius_clearance
                 + camera.large_target_radius);
     let movement = target_position - runtime.last_target_position;
     let movement_yaw = yaw_from_direction(movement);
@@ -595,19 +656,6 @@ fn apply_input_to_camera(
         );
     }
 
-    if input.raw_mode_center {
-        camera.target_mode = ThirdPersonCameraMode::Center;
-    }
-    if input.raw_mode_shoulder {
-        camera.target_mode = ThirdPersonCameraMode::Shoulder;
-    }
-    if input.shoulder_toggle {
-        camera.target_shoulder_side = camera.target_shoulder_side.opposite();
-        if camera.target_mode == ThirdPersonCameraMode::Center {
-            camera.target_mode = ThirdPersonCameraMode::Shoulder;
-        }
-    }
-
     if recenter_on_retarget || input.recenter {
         if let Some(reference_yaw) = reference_yaw {
             camera.target_yaw = reference_yaw;
@@ -617,46 +665,6 @@ fn apply_input_to_camera(
     }
 
     runtime.manual_input_this_frame = input.has_manual_motion();
-}
-
-fn effective_target_mode(
-    persistent_mode: ThirdPersonCameraMode,
-    input: &ThirdPersonCameraInput,
-    settings: &ThirdPersonCameraSettings,
-    lock_on_active: bool,
-) -> ThirdPersonCameraMode {
-    if settings.framing.aim_enabled && (input.aim || lock_on_active) {
-        ThirdPersonCameraMode::Aim
-    } else if input.shoulder_hold {
-        ThirdPersonCameraMode::Shoulder
-    } else {
-        persistent_mode
-    }
-}
-
-fn current_mode(aim_blend: f32, shoulder_blend: f32) -> ThirdPersonCameraMode {
-    if aim_blend > 0.5 {
-        ThirdPersonCameraMode::Aim
-    } else if shoulder_blend.abs() > 0.5 {
-        ThirdPersonCameraMode::Shoulder
-    } else {
-        ThirdPersonCameraMode::Center
-    }
-}
-
-fn shoulder_blend_target(mode: ThirdPersonCameraMode, side: ShoulderSide) -> f32 {
-    match mode {
-        ThirdPersonCameraMode::Center => 0.0,
-        ThirdPersonCameraMode::Shoulder | ThirdPersonCameraMode::Aim => side.sign(),
-    }
-}
-
-fn aim_blend_target(mode: ThirdPersonCameraMode, settings: &ThirdPersonCameraSettings) -> f32 {
-    if settings.framing.aim_enabled && mode == ThirdPersonCameraMode::Aim {
-        1.0
-    } else {
-        0.0
-    }
 }
 
 fn apply_cursor_lock(
@@ -782,18 +790,17 @@ fn follow_target_anchor(
     fallback_target_position: Vec3,
 ) -> Option<Vec3> {
     let global = helper.compute_global_transform(target.target).ok();
-    let (rotation, target_position) = if let Some(global) = global {
+    let target_position = if let Some(global) = global {
         let (_, rotation, translation) = global.to_scale_rotation_translation();
-        (rotation, translation + rotation * target.offset)
+        translation + rotation * target.offset
     } else {
-        (Quat::IDENTITY, fallback_target_position)
+        fallback_target_position
     };
     Some(
         target_position
-            + rotation * Vec3::ZERO
             + Vec3::Y
-                * (settings.framing.shoulder_height
-                    + settings.framing.target_radius_clearance
+                * (settings.anchor.height
+                    + settings.anchor.radius_clearance
                     + camera.large_target_radius),
     )
 }
@@ -1139,17 +1146,14 @@ fn clamp_camera_distance(
     )
 }
 
-fn camera_radius_padding(
-    settings: &ThirdPersonCameraSettings,
-    obstacle_type: crate::ObstacleType,
-) -> f32 {
+fn camera_radius_padding(settings: &ThirdPersonCameraSettings, obstacle_type: ObstacleType) -> f32 {
     if !settings.collision.include_shape_radius {
         return 0.0;
     }
 
     match obstacle_type {
-        crate::ObstacleType::Blocker => settings.collision.probe_radius,
-        crate::ObstacleType::Occluder => settings.collision.probe_radius * 0.5,
+        ObstacleType::Blocker => settings.collision.probe_radius,
+        ObstacleType::Occluder => settings.collision.probe_radius * 0.5,
     }
 }
 

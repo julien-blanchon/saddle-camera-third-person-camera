@@ -2,13 +2,18 @@ use saddle_camera_third_person_camera_example_common as common;
 
 use bevy::prelude::*;
 use saddle_camera_third_person_camera::{
-    CollisionSettings, CollisionStrategy, ThirdPersonCamera, ThirdPersonCameraPlugin,
-    ThirdPersonCameraSettings,
+    AnchorSettings, CollisionSettings, CollisionStrategy, ThirdPersonCamera,
+    ThirdPersonCameraEnhancedInputPlugin, ThirdPersonCameraPlugin, ThirdPersonCameraSettings,
+    ThirdPersonCameraShoulderSettings,
 };
 
 fn main() {
     let mut app = App::new();
-    app.add_plugins((DefaultPlugins, ThirdPersonCameraPlugin::default()));
+    app.add_plugins((
+        DefaultPlugins,
+        ThirdPersonCameraPlugin::default(),
+        ThirdPersonCameraEnhancedInputPlugin::default(),
+    ));
     common::add_debug_pane(&mut app);
     app.add_systems(Startup, setup);
     app.add_systems(
@@ -85,7 +90,7 @@ fn setup(
             speed: 0.36,
         },
     );
-    common::spawn_camera(
+    let camera = common::spawn_camera(
         &mut commands,
         "Collision Corridor Camera",
         target,
@@ -93,9 +98,8 @@ fn setup(
         Vec3::new(0.0, 1.5, 0.0),
         ThirdPersonCamera::default(),
         ThirdPersonCameraSettings {
-            framing: saddle_camera_third_person_camera::FramingSettings {
-                shoulder_height: 0.55,
-                aim_height_offset: -0.25,
+            anchor: AnchorSettings {
+                height: 0.55,
                 ..default()
             },
             collision: CollisionSettings {
@@ -109,4 +113,8 @@ fn setup(
         },
         true,
     );
+    commands.entity(camera).insert(ThirdPersonCameraShoulderSettings {
+        aim_height_offset: -0.25,
+        ..default()
+    });
 }

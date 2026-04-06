@@ -8,9 +8,12 @@ use bevy_brp_extras::BrpExtrasPlugin;
 #[cfg(feature = "e2e")]
 use saddle_bevy_e2e::E2ESet;
 use saddle_camera_third_person_camera::{
-    CollisionSettings, CollisionStrategy, LockOnSettings, ThirdPersonCamera, ThirdPersonCameraMode,
+    AnchorSettings, CollisionSettings, CollisionStrategy, ThirdPersonCamera,
+    ThirdPersonCameraCursorController, ThirdPersonCameraEnhancedInputPlugin,
+    ThirdPersonCameraLockOnRuntime, ThirdPersonCameraLockOnSettings, ThirdPersonCameraMode,
     ThirdPersonCameraPlugin, ThirdPersonCameraRuntime, ThirdPersonCameraSettings,
-    ThirdPersonCameraSystems, ThirdPersonCameraTarget,
+    ThirdPersonCameraShoulderRig, ThirdPersonCameraShoulderRuntime,
+    ThirdPersonCameraShoulderSettings, ThirdPersonCameraSystems, ThirdPersonCameraTarget,
 };
 
 #[derive(Resource, Clone, Copy)]
@@ -37,6 +40,7 @@ fn main() {
             ..default()
         }),
         ThirdPersonCameraPlugin::default(),
+        ThirdPersonCameraEnhancedInputPlugin::default(),
     ));
     #[cfg(not(feature = "e2e"))]
     common::add_debug_pane(&mut app);
@@ -128,11 +132,10 @@ fn setup(
         primary,
         Vec3::new(0.6, 2.0, 7.2),
         Vec3::new(0.0, 1.5, 0.0),
-        ThirdPersonCamera::default().with_mode(ThirdPersonCameraMode::Shoulder),
+        ThirdPersonCamera::default(),
         ThirdPersonCameraSettings {
-            framing: saddle_camera_third_person_camera::FramingSettings {
-                shoulder_height: 0.55,
-                aim_height_offset: -0.25,
+            anchor: AnchorSettings {
+                height: 0.55,
                 ..default()
             },
             collision: CollisionSettings {
@@ -140,11 +143,6 @@ fn setup(
                 probe_radius: 0.38,
                 sample_offset_x: 0.36,
                 sample_offset_y: 0.28,
-                ..default()
-            },
-            lock_on: LockOnSettings {
-                enabled: true,
-                max_distance: 20.0,
                 ..default()
             },
             auto_recenter: saddle_camera_third_person_camera::AutoRecenterSettings {
@@ -155,6 +153,18 @@ fn setup(
         },
         true,
     );
+    commands.entity(camera).insert((
+        ThirdPersonCameraShoulderRig::default().with_mode(ThirdPersonCameraMode::Shoulder),
+        ThirdPersonCameraShoulderSettings {
+            aim_height_offset: -0.25,
+            ..default()
+        },
+        ThirdPersonCameraLockOnSettings {
+            enabled: true,
+            max_distance: 20.0,
+            ..default()
+        },
+    ));
 
     commands.insert_resource(LabCameraEntity(camera));
     commands.insert_resource(LabPrimaryTarget(primary));
@@ -191,11 +201,17 @@ fn update_overlay(
         &ThirdPersonCamera,
         &ThirdPersonCameraRuntime,
         &ThirdPersonCameraTarget,
+        Option<&ThirdPersonCameraShoulderRig>,
+        Option<&ThirdPersonCameraShoulderRuntime>,
+        Option<&ThirdPersonCameraLockOnRuntime>,
+        Option<&ThirdPersonCameraCursorController>,
     )>,
     names: Query<&Name>,
     mut overlays: Query<&mut Text, With<common::DemoOverlay>>,
 ) {
-    let Ok((camera, runtime, target)) = cameras.get(camera_entity.0) else {
+    let Ok((camera, runtime, target, shoulder_rig, shoulder_runtime, _lock_on_runtime, cursor_controller)) =
+        cameras.get(camera_entity.0)
+    else {
         return;
     };
     let Ok(mut text) = overlays.single_mut() else {
@@ -215,16 +231,16 @@ fn update_overlay(
          shoulder {:.2} aim {:.2}\n\
          tracked target {target_name}\n\
          primary {} alternate {}",
-        camera.mode,
-        camera.target_mode,
+        shoulder_rig.map_or(ThirdPersonCameraMode::Center, |rig| rig.mode),
+        shoulder_rig.map_or(ThirdPersonCameraMode::Center, |rig| rig.target_mode),
         camera.yaw,
         camera.pitch,
         runtime.desired_distance,
         runtime.corrected_distance,
         runtime.obstruction_active,
-        runtime.cursor_locked,
-        runtime.shoulder_blend,
-        runtime.aim_blend,
+        cursor_controller.is_some_and(|controller| controller.locked),
+        shoulder_runtime.map_or(0.0, |runtime| runtime.shoulder_blend),
+        shoulder_runtime.map_or(0.0, |runtime| runtime.aim_blend),
         primary.0.index(),
         alternate.0.index(),
     ));

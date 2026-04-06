@@ -2,13 +2,18 @@ use saddle_camera_third_person_camera_example_common as common;
 
 use bevy::prelude::*;
 use saddle_camera_third_person_camera::{
-    ShoulderSide, ThirdPersonCamera, ThirdPersonCameraMode, ThirdPersonCameraPlugin,
-    ThirdPersonCameraSettings, ThirdPersonCameraSystems,
+    AnchorSettings, ShoulderSide, ThirdPersonCamera, ThirdPersonCameraEnhancedInputPlugin,
+    ThirdPersonCameraMode, ThirdPersonCameraPlugin, ThirdPersonCameraSettings,
+    ThirdPersonCameraShoulderRig, ThirdPersonCameraShoulderSettings, ThirdPersonCameraSystems,
 };
 
 fn main() {
     let mut app = App::new();
-    app.add_plugins((DefaultPlugins, ThirdPersonCameraPlugin::default()));
+    app.add_plugins((
+        DefaultPlugins,
+        ThirdPersonCameraPlugin::default(),
+        ThirdPersonCameraEnhancedInputPlugin::default(),
+    ));
     common::add_debug_pane(&mut app);
     app.add_systems(Startup, setup);
     app.add_systems(
@@ -50,19 +55,16 @@ fn setup(
     // shoulder_height is tuned for capsule-centered targets (origin at capsule
     // midpoint ~1.1 above ground).  The default 1.35 is designed for
     // foot-anchored characters so we lower it here.
-    common::spawn_camera(
+    let camera = common::spawn_camera(
         &mut commands,
         "Shoulder Aim Camera",
         target,
         Vec3::new(0.6, 2.0, 6.0),
         Vec3::new(0.0, 1.5, 0.0),
-        ThirdPersonCamera::default()
-            .with_mode(ThirdPersonCameraMode::Shoulder)
-            .with_shoulder_side(ShoulderSide::Right),
+        ThirdPersonCamera::default(),
         ThirdPersonCameraSettings {
-            framing: saddle_camera_third_person_camera::FramingSettings {
-                shoulder_height: 0.55,
-                aim_height_offset: -0.25,
+            anchor: AnchorSettings {
+                height: 0.55,
                 ..default()
             },
             auto_recenter: saddle_camera_third_person_camera::AutoRecenterSettings {
@@ -73,4 +75,13 @@ fn setup(
         },
         true,
     );
+    commands.entity(camera).insert((
+        ThirdPersonCameraShoulderRig::default()
+            .with_mode(ThirdPersonCameraMode::Shoulder)
+            .with_shoulder_side(ShoulderSide::Right),
+        ThirdPersonCameraShoulderSettings {
+            aim_height_offset: -0.25,
+            ..default()
+        },
+    ));
 }

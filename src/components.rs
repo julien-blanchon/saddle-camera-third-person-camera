@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use crate::config::{ObstacleType, ShoulderSide, ThirdPersonCameraMode, ThirdPersonCameraSettings};
+use crate::config::{ObstacleType, ThirdPersonCameraSettings};
 
 #[derive(Component, Clone, Debug, Reflect)]
 #[reflect(Component)]
@@ -9,8 +9,7 @@ use crate::config::{ObstacleType, ShoulderSide, ThirdPersonCameraMode, ThirdPers
     Transform,
     ThirdPersonCameraSettings,
     ThirdPersonCameraRuntime,
-    ThirdPersonCameraInput,
-    ThirdPersonCameraLockOn
+    ThirdPersonCameraInput
 )]
 pub struct ThirdPersonCamera {
     pub yaw: f32,
@@ -19,16 +18,10 @@ pub struct ThirdPersonCamera {
     pub target_yaw: f32,
     pub target_pitch: f32,
     pub target_distance: f32,
-    pub shoulder_side: ShoulderSide,
-    pub target_shoulder_side: ShoulderSide,
-    pub mode: ThirdPersonCameraMode,
-    pub target_mode: ThirdPersonCameraMode,
     pub large_target_radius: f32,
     pub home_yaw: f32,
     pub home_pitch: f32,
     pub home_distance: f32,
-    pub home_shoulder_side: ShoulderSide,
-    pub home_mode: ThirdPersonCameraMode,
 }
 
 impl ThirdPersonCamera {
@@ -40,16 +33,10 @@ impl ThirdPersonCamera {
             target_yaw: yaw,
             target_pitch: pitch,
             target_distance: distance,
-            shoulder_side: ShoulderSide::Right,
-            target_shoulder_side: ShoulderSide::Right,
-            mode: ThirdPersonCameraMode::Center,
-            target_mode: ThirdPersonCameraMode::Center,
             large_target_radius: 0.0,
             home_yaw: yaw,
             home_pitch: pitch,
             home_distance: distance,
-            home_shoulder_side: ShoulderSide::Right,
-            home_mode: ThirdPersonCameraMode::Center,
         }
     }
 
@@ -62,20 +49,6 @@ impl ThirdPersonCamera {
         Self::new(distance, yaw, pitch)
     }
 
-    pub fn with_mode(mut self, mode: ThirdPersonCameraMode) -> Self {
-        self.mode = mode;
-        self.target_mode = mode;
-        self.home_mode = mode;
-        self
-    }
-
-    pub fn with_shoulder_side(mut self, side: ShoulderSide) -> Self {
-        self.shoulder_side = side;
-        self.target_shoulder_side = side;
-        self.home_shoulder_side = side;
-        self
-    }
-
     pub fn with_large_target_radius(mut self, radius: f32) -> Self {
         self.large_target_radius = radius.max(0.0);
         self
@@ -85,16 +58,12 @@ impl ThirdPersonCamera {
         self.home_yaw = self.yaw;
         self.home_pitch = self.pitch;
         self.home_distance = self.distance;
-        self.home_shoulder_side = self.shoulder_side;
-        self.home_mode = self.mode;
     }
 
     pub fn reset_to_home(&mut self) {
         self.target_yaw = self.home_yaw;
         self.target_pitch = self.home_pitch;
         self.target_distance = self.home_distance;
-        self.target_shoulder_side = self.home_shoulder_side;
-        self.target_mode = self.home_mode;
     }
 }
 
@@ -118,23 +87,14 @@ pub struct ThirdPersonCameraRuntime {
     pub corrected_distance: f32,
     pub obstruction_distance: f32,
     pub obstruction_active: bool,
-    pub shoulder_blend: f32,
-    pub target_shoulder_blend: f32,
-    pub aim_blend: f32,
-    pub target_aim_blend: f32,
-    pub lock_on_focus: Vec3,
-    pub lock_on_blend: f32,
-    pub target_lock_on_blend: f32,
     pub desired_camera_position: Vec3,
     pub corrected_camera_position: Vec3,
     pub last_hit_point: Option<Vec3>,
     pub last_hit_normal: Vec3,
     pub last_collision_target: Option<Entity>,
-    pub active_lock_on_target: Option<Entity>,
     pub idle_seconds: f32,
     pub manual_input_this_frame: bool,
     pub last_target_position: Vec3,
-    pub cursor_locked: bool,
 }
 
 impl Default for ThirdPersonCameraRuntime {
@@ -148,23 +108,14 @@ impl Default for ThirdPersonCameraRuntime {
             corrected_distance: distance,
             obstruction_distance: distance,
             obstruction_active: false,
-            shoulder_blend: 0.0,
-            target_shoulder_blend: 0.0,
-            aim_blend: 0.0,
-            target_aim_blend: 0.0,
-            lock_on_focus: Vec3::ZERO,
-            lock_on_blend: 0.0,
-            target_lock_on_blend: 0.0,
             desired_camera_position: Vec3::ZERO,
             corrected_camera_position: Vec3::ZERO,
             last_hit_point: None,
             last_hit_normal: Vec3::ZERO,
             last_collision_target: None,
-            active_lock_on_target: None,
             idle_seconds: 0.0,
             manual_input_this_frame: false,
             last_target_position: Vec3::ZERO,
-            cursor_locked: ThirdPersonCameraSettings::default().cursor.lock_by_default,
         }
     }
 }
@@ -200,16 +151,7 @@ impl ThirdPersonCameraTarget {
 pub struct ThirdPersonCameraInput {
     pub orbit_delta: Vec2,
     pub zoom_delta: f32,
-    pub shoulder_toggle: bool,
-    pub shoulder_hold: bool,
-    pub aim: bool,
-    pub lock_on_toggle: bool,
-    pub lock_on_next: bool,
-    pub lock_on_previous: bool,
     pub recenter: bool,
-    pub cursor_lock_toggle: bool,
-    pub raw_mode_center: bool,
-    pub raw_mode_shoulder: bool,
 }
 
 impl ThirdPersonCameraInput {
@@ -220,38 +162,7 @@ impl ThirdPersonCameraInput {
     pub fn has_manual_motion(&self) -> bool {
         self.orbit_delta.length_squared() > 0.0
             || self.zoom_delta.abs() > f32::EPSILON
-            || self.shoulder_toggle
-            || self.shoulder_hold
-            || self.aim
-            || self.lock_on_toggle
-            || self.lock_on_next
-            || self.lock_on_previous
             || self.recenter
-            || self.cursor_lock_toggle
-            || self.raw_mode_center
-            || self.raw_mode_shoulder
-    }
-}
-
-#[derive(Component, Clone, Copy, Debug, Default, Reflect)]
-#[reflect(Component)]
-pub struct ThirdPersonCameraLockOn {
-    pub active_target: Option<Entity>,
-}
-
-#[derive(Component, Clone, Copy, Debug, Reflect)]
-#[reflect(Component)]
-pub struct ThirdPersonCameraLockOnTarget {
-    pub offset: Vec3,
-    pub priority: f32,
-}
-
-impl Default for ThirdPersonCameraLockOnTarget {
-    fn default() -> Self {
-        Self {
-            offset: Vec3::ZERO,
-            priority: 0.0,
-        }
     }
 }
 
@@ -292,10 +203,6 @@ impl Default for ThirdPersonCameraObstacle {
         }
     }
 }
-
-#[derive(Component, Clone, Copy, Debug, Default, Reflect)]
-#[reflect(Component)]
-pub struct ThirdPersonCameraInputTarget;
 
 #[derive(Component, Clone, Copy, Debug, Default, Reflect)]
 #[reflect(Component)]
