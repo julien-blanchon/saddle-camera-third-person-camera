@@ -7,18 +7,14 @@ use saddle_camera_third_person_camera::{
 };
 
 #[derive(Component)]
-struct HoverTarget {
-    center: Vec3,
-    amplitude: f32,
-    speed: f32,
-}
+struct BasicFollowTarget;
 
 fn main() {
     let mut app = App::new();
     app.add_plugins((DefaultPlugins, ThirdPersonCameraPlugin::default()));
     common::add_debug_pane(&mut app);
     app.add_systems(Startup, setup);
-    app.add_systems(Update, (animate_target, drive_camera_input));
+    app.add_systems(Update, (move_target, drive_camera_input));
     app.run();
 }
 
@@ -32,18 +28,14 @@ fn setup(
         &mut meshes,
         &mut materials,
         "basic_follow",
-        "Pure core integration: hold left mouse and drag to orbit, scroll to zoom, R to recenter.\nThis scene does not add the optional shoulder, lock-on, cursor, or enhanced-input adapters.",
+        "WASD / arrow keys move the target. Hold left mouse and drag to orbit, scroll to zoom, R to recenter.\nThis scene does not add the optional shoulder, lock-on, cursor, or enhanced-input adapters.",
         Color::srgb(0.22, 0.58, 0.82),
     );
 
     let target = commands
         .spawn((
-            Name::new("Basic Hover Target"),
-            HoverTarget {
-                center: Vec3::new(0.0, 1.1, -1.0),
-                amplitude: 0.18,
-                speed: 1.2,
-            },
+            Name::new("Basic Follow Target"),
+            BasicFollowTarget,
             Mesh3d(meshes.add(Capsule3d::new(0.45, 1.2).mesh().rings(10).latitudes(14))),
             MeshMaterial3d(materials.add(StandardMaterial {
                 base_color: Color::srgb(0.86, 0.34, 0.32),
@@ -72,14 +64,38 @@ fn setup(
     ));
 }
 
-fn animate_target(time: Res<Time>, mut targets: Query<(&HoverTarget, &mut Transform)>) {
-    for (hover, mut transform) in &mut targets {
-        transform.translation = hover.center
-            + Vec3::new(
-                0.0,
-                (time.elapsed_secs() * hover.speed).sin() * hover.amplitude,
-                0.0,
-            );
+fn move_target(
+    time: Res<Time>,
+    keys: Res<ButtonInput<KeyCode>>,
+    cameras: Query<&ThirdPersonCamera>,
+    mut targets: Query<&mut Transform, With<BasicFollowTarget>>,
+) {
+    let Ok(camera) = cameras.single() else {
+        return;
+    };
+    let Ok(mut transform) = targets.single_mut() else {
+        return;
+    };
+
+    let mut direction = Vec3::ZERO;
+    if keys.pressed(KeyCode::KeyW) || keys.pressed(KeyCode::ArrowUp) {
+        direction.z -= 1.0;
+    }
+    if keys.pressed(KeyCode::KeyS) || keys.pressed(KeyCode::ArrowDown) {
+        direction.z += 1.0;
+    }
+    if keys.pressed(KeyCode::KeyA) || keys.pressed(KeyCode::ArrowLeft) {
+        direction.x -= 1.0;
+    }
+    if keys.pressed(KeyCode::KeyD) || keys.pressed(KeyCode::ArrowRight) {
+        direction.x += 1.0;
+    }
+
+    if direction.length_squared() > 0.0 {
+        let facing = Quat::from_rotation_y(camera.yaw);
+        let world_direction = facing * direction.normalize();
+        let speed = 5.0;
+        transform.translation += world_direction * speed * time.delta_secs();
     }
 }
 

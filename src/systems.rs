@@ -554,11 +554,34 @@ pub(crate) fn resolve_obstruction(
 }
 
 pub(crate) fn apply_camera_transform(
-    mut cameras: Query<(&ThirdPersonCameraRuntime, &mut Transform), With<ThirdPersonCamera>>,
+    mut cameras: Query<
+        (
+            &ThirdPersonCameraRuntime,
+            &mut Transform,
+            Option<&crate::ThirdPersonCameraCustomEffects>,
+        ),
+        With<ThirdPersonCamera>,
+    >,
 ) {
-    for (runtime, mut transform) in &mut cameras {
-        *transform = Transform::from_translation(runtime.corrected_camera_position)
+    for (runtime, mut transform, custom_effects) in &mut cameras {
+        let base = Transform::from_translation(runtime.corrected_camera_position)
             .looking_at(runtime.look_target, Vec3::Y);
+
+        let stack = custom_effects.map_or(crate::CameraEffectStack::IDENTITY, |fx| fx.compose());
+        if stack.translation == Vec3::ZERO && stack.rotation == Vec3::ZERO {
+            *transform = base;
+        } else {
+            let local_offset =
+                base.rotation * stack.translation;
+            let effect_rotation = Quat::from_euler(
+                EulerRot::YXZ,
+                stack.rotation.y,
+                stack.rotation.x,
+                stack.rotation.z,
+            );
+            *transform = Transform::from_translation(base.translation + local_offset)
+                .with_rotation(base.rotation * effect_rotation);
+        }
     }
 }
 

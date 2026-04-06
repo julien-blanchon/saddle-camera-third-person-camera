@@ -5502,6 +5502,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "saddle-camera-third-person-camera-example-custom-effects"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "saddle-camera-third-person-camera",
+ "saddle-camera-third-person-camera-example-common",
+]
+
+[[package]]
 name = "saddle-camera-third-person-camera-example-gamepad"
 version = "0.1.0"
 dependencies = [

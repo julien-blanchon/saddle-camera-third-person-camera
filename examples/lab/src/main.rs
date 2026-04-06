@@ -9,11 +9,12 @@ use bevy_brp_extras::BrpExtrasPlugin;
 use saddle_bevy_e2e::E2ESet;
 use saddle_camera_third_person_camera::{
     AnchorSettings, CollisionSettings, CollisionStrategy, ThirdPersonCamera,
-    ThirdPersonCameraCursorController, ThirdPersonCameraEnhancedInputPlugin,
-    ThirdPersonCameraLockOnRuntime, ThirdPersonCameraLockOnSettings, ThirdPersonCameraMode,
-    ThirdPersonCameraPlugin, ThirdPersonCameraRuntime, ThirdPersonCameraSettings,
-    ThirdPersonCameraShoulderRig, ThirdPersonCameraShoulderRuntime,
-    ThirdPersonCameraShoulderSettings, ThirdPersonCameraSystems, ThirdPersonCameraTarget,
+    ThirdPersonCameraCursorController, ThirdPersonCameraCustomEffects,
+    ThirdPersonCameraEnhancedInputPlugin, ThirdPersonCameraLockOnRuntime,
+    ThirdPersonCameraLockOnSettings, ThirdPersonCameraMode, ThirdPersonCameraPlugin,
+    ThirdPersonCameraRuntime, ThirdPersonCameraSettings, ThirdPersonCameraShoulderRig,
+    ThirdPersonCameraShoulderRuntime, ThirdPersonCameraShoulderSettings,
+    ThirdPersonCameraSystems, ThirdPersonCameraTarget,
 };
 
 #[derive(Resource, Clone, Copy)]
@@ -164,6 +165,7 @@ fn setup(
             max_distance: 20.0,
             ..default()
         },
+        ThirdPersonCameraCustomEffects::default(),
     ));
 
     commands.insert_resource(LabCameraEntity(camera));

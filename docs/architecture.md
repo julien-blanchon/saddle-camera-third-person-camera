@@ -62,9 +62,11 @@ The runtime remains intentionally explicit:
    Samples the follow target, applies core orbit or zoom or recenter input, updates optional lock-on state, smooths pivot or orientation or zoom, and resolves adapter state such as shoulder or aim blends.
 3. `ResolveObstruction`
    Computes the unconstrained pose, tests it against opt-in obstacles, and derives `obstruction_distance`, `corrected_distance`, hit point, and hit normal.
-4. `ApplyTransform`
-   Writes the final `Transform` and clears transient input inboxes.
-5. `DebugDraw`
+4. `ComposeEffects`
+   User-facing seam for custom effect systems. External systems update `ThirdPersonCameraCustomEffects` layers here, after obstruction resolution and before the final transform write.
+5. `ApplyTransform`
+   Writes the final `Transform`, composing any active custom effect layers (translation and rotation offsets in camera-local space), and clears transient input inboxes.
+6. `DebugDraw`
    Draws pivot, desired boom, corrected boom, and hit state for cameras with `ThirdPersonCameraDebug`.
 
 `UpdateIntent` and the later phases run in `PostUpdate` so the camera can follow targets that finish authoritative motion late in the frame.

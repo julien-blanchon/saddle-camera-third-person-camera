@@ -2,6 +2,7 @@ mod action;
 mod components;
 mod config;
 mod debug;
+mod effects;
 #[cfg(feature = "enhanced-input")]
 mod enhanced_input;
 mod math;
@@ -22,6 +23,10 @@ pub use config::{
     AnchorSettings, AutoRecenterSettings, CollisionSettings, CollisionStrategy, FollowAlignment,
     ObstacleType, OrbitSettings, ScreenSpaceFramingSettings, SmoothingSettings,
     ThirdPersonCameraSettings, ZoomSettings,
+};
+pub use effects::{
+    CameraEffectLayer, CameraEffectStack, NamedEffectLayer, ThirdPersonCameraCustomEffects,
+    compose_effect_stack,
 };
 #[cfg(feature = "enhanced-input")]
 pub use enhanced_input::{
@@ -50,6 +55,11 @@ pub enum ThirdPersonCameraSystems {
     ReadInput,
     UpdateIntent,
     ResolveObstruction,
+    /// User-facing seam for custom effect systems. Systems placed here run
+    /// after obstruction resolution and before the final transform write,
+    /// making it the ideal place to update [`ThirdPersonCameraCustomEffects`]
+    /// layers.
+    ComposeEffects,
     ApplyTransform,
     DebugDraw,
 }
@@ -127,6 +137,10 @@ impl Plugin for ThirdPersonCameraPlugin {
             .register_type::<ThirdPersonCameraShoulderSettings>()
             .register_type::<ThirdPersonCameraTarget>()
             .register_type::<ZoomSettings>()
+            .register_type::<CameraEffectLayer>()
+            .register_type::<CameraEffectStack>()
+            .register_type::<NamedEffectLayer>()
+            .register_type::<ThirdPersonCameraCustomEffects>()
             .add_systems(self.activate_schedule, activate_runtime)
             .add_systems(self.deactivate_schedule, deactivate_runtime)
             .add_systems(
@@ -142,6 +156,7 @@ impl Plugin for ThirdPersonCameraPlugin {
                 (
                     ThirdPersonCameraSystems::UpdateIntent,
                     ThirdPersonCameraSystems::ResolveObstruction,
+                    ThirdPersonCameraSystems::ComposeEffects,
                     ThirdPersonCameraSystems::ApplyTransform,
                     ThirdPersonCameraSystems::DebugDraw,
                 )

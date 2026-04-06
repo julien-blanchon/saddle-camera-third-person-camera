@@ -205,6 +205,7 @@ fn spawn_player(
             },
             CharacterPush::default(),
             Transform::from_xyz(0.0, 2.0, 8.0),
+            Visibility::default(),
             actions!(CharacterController[
                 (
                     Action::<MoveAction>::new(),

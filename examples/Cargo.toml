@@ -9,6 +9,7 @@ members = [
     "physics_target",
     "gamepad",
     "runtime_retarget",
+    "custom_effects",
     "lab",
 ]
 resolver = "3"

@@ -8,9 +8,9 @@ use saddle_bevy_e2e::{
     scenario::Scenario,
 };
 use saddle_camera_third_person_camera::{
-    ThirdPersonCamera, ThirdPersonCameraLockOn, ThirdPersonCameraLockOnRuntime,
-    ThirdPersonCameraRuntime, ThirdPersonCameraShoulderRig, ThirdPersonCameraShoulderRuntime,
-    ThirdPersonCameraTarget,
+    CameraEffectLayer, ThirdPersonCamera, ThirdPersonCameraCustomEffects, ThirdPersonCameraLockOn,
+    ThirdPersonCameraLockOnRuntime, ThirdPersonCameraRuntime, ThirdPersonCameraShoulderRig,
+    ThirdPersonCameraShoulderRuntime, ThirdPersonCameraTarget,
 };
 
 use crate::{LabAlternateTarget, LabCameraEntity, LabReserveTarget};
@@ -72,6 +72,8 @@ fn scenario_by_name(name: &str) -> Option<Scenario> {
         "third_person_camera_shoulder_swap" => Some(build_shoulder_swap()),
         "third_person_camera_lock_on" => Some(build_lock_on()),
         "third_person_camera_retarget" => Some(build_retarget()),
+        "third_person_camera_follow_movement" => Some(build_follow_movement()),
+        "third_person_camera_custom_effects" => Some(build_custom_effects()),
         _ => None,
     }
 }
@@ -84,6 +86,8 @@ fn list_scenarios() -> Vec<&'static str> {
         "third_person_camera_shoulder_swap",
         "third_person_camera_lock_on",
         "third_person_camera_retarget",
+        "third_person_camera_follow_movement",
+        "third_person_camera_custom_effects",
     ]
 }
 
@@ -361,6 +365,156 @@ fn build_retarget() -> Scenario {
             "third_person_camera_retarget_runtime",
         ))
         .then(Action::Screenshot("third_person_camera_retarget_after".into()))
+        .then(Action::WaitFrames(1))
+        .build()
+}
+
+/// Scenario: target moves via the corridor motion path, camera pivot must follow.
+/// Verifies that the camera tracks a moving target across frames (covers
+/// basic_follow target-movement behavior).
+fn build_follow_movement() -> Scenario {
+    #[derive(Resource, Clone, Copy)]
+    struct FollowMovementCheckpoint {
+        pivot: Vec3,
+    }
+
+    Scenario::builder("third_person_camera_follow_movement")
+        .description(
+            "Wait for the target to move along its corridor path, capture a pivot checkpoint, \
+             wait more frames, then assert the pivot has moved significantly (camera follows target).",
+        )
+        .then(Action::WaitFrames(60))
+        .then(Action::Screenshot(
+            "third_person_camera_follow_before".into(),
+        ))
+        .then(Action::Custom(Box::new(|world: &mut World| {
+            let Some(rt) = runtime(world) else {
+                return;
+            };
+            world.insert_resource(FollowMovementCheckpoint { pivot: rt.pivot });
+        })))
+        .then(Action::WaitFrames(120))
+        .then(assertions::custom(
+            "pivot moved — camera follows target motion",
+            |world| {
+                let Some(rt) = runtime(world) else {
+                    return false;
+                };
+                let Some(checkpoint) = world.get_resource::<FollowMovementCheckpoint>() else {
+                    return false;
+                };
+                rt.pivot.distance(checkpoint.pivot) > 0.3
+            },
+        ))
+        .then(assertions::log_summary(
+            "third_person_camera_follow_movement summary",
+        ))
+        .then(inspect::dump_component_json::<ThirdPersonCameraRuntime>(
+            "third_person_camera_follow_movement_runtime",
+        ))
+        .then(Action::Screenshot(
+            "third_person_camera_follow_after".into(),
+        ))
+        .then(Action::WaitFrames(1))
+        .build()
+}
+
+/// Scenario: inject a custom effect layer and assert it modifies the camera
+/// transform (covers custom_effects example behavior).
+fn build_custom_effects() -> Scenario {
+    #[derive(Resource, Clone, Copy)]
+    struct EffectsCheckpoint {
+        position: Vec3,
+    }
+
+    fn inject_test_effect(world: &mut World) {
+        let Some(entity) = camera_entity(world) else {
+            return;
+        };
+        let Some(mut effects) = world.get_mut::<ThirdPersonCameraCustomEffects>(entity) else {
+            return;
+        };
+        effects.set(
+            "e2e_test_shake",
+            CameraEffectLayer::weighted(
+                Vec3::new(0.0, 0.12, 0.0),
+                Vec3::new(0.04, 0.0, 0.02),
+                0.0,
+                1.0,
+            ),
+        );
+    }
+
+    fn remove_test_effect(world: &mut World) {
+        let Some(entity) = camera_entity(world) else {
+            return;
+        };
+        let Some(mut effects) = world.get_mut::<ThirdPersonCameraCustomEffects>(entity) else {
+            return;
+        };
+        effects.remove("e2e_test_shake");
+    }
+
+    Scenario::builder("third_person_camera_custom_effects")
+        .description(
+            "Capture baseline camera position, inject a custom effect layer, \
+             assert the transform shifted, then remove it and verify recovery.",
+        )
+        .then(Action::WaitFrames(60))
+        .then(Action::Screenshot(
+            "third_person_camera_effects_before".into(),
+        ))
+        .then(Action::Custom(Box::new(|world: &mut World| {
+            let Some(entity) = camera_entity(world) else {
+                return;
+            };
+            let Some(transform) = world.get::<Transform>(entity) else {
+                return;
+            };
+            world.insert_resource(EffectsCheckpoint {
+                position: transform.translation,
+            });
+        })))
+        .then(Action::Custom(Box::new(inject_test_effect)))
+        .then(Action::WaitFrames(4))
+        .then(assertions::custom(
+            "custom effect shifted camera position",
+            |world| {
+                let Some(entity) = camera_entity(world) else {
+                    return false;
+                };
+                let Some(transform) = world.get::<Transform>(entity) else {
+                    return false;
+                };
+                let Some(checkpoint) = world.get_resource::<EffectsCheckpoint>() else {
+                    return false;
+                };
+                transform.translation.distance(checkpoint.position) > 0.01
+            },
+        ))
+        .then(Action::Screenshot(
+            "third_person_camera_effects_active".into(),
+        ))
+        .then(Action::Custom(Box::new(remove_test_effect)))
+        .then(Action::WaitFrames(4))
+        .then(assertions::custom(
+            "camera returns to baseline after effect removed",
+            |world| {
+                let Some(entity) = camera_entity(world) else {
+                    return false;
+                };
+                let Some(effects) = world.get::<ThirdPersonCameraCustomEffects>(entity) else {
+                    return false;
+                };
+                effects.active_count() == 0
+            },
+        ))
+        .then(assertions::log_summary(
+            "third_person_camera_custom_effects summary",
+        ))
+        .then(Action::Screenshot(
+            "third_person_camera_effects_after".into(),
+        ))
         .then(Action::WaitFrames(1))
         .build()
 }
